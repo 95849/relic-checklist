@@ -16,7 +16,19 @@ async function parseDocx(file) {
     { arrayBuffer },
     {
       convertImage: mammoth.images.imgElement(function (image) {
-        return image.read('base64').then(function (base64) {
+        return image.read().then(function (buffer) {
+          const bytes = new Uint8Array(buffer)
+          let binary = ''
+          const chunkSize = 8192
+          for (let i = 0; i < bytes.length; i += chunkSize) {
+            const end = Math.min(i + chunkSize, bytes.length)
+            const chunk = bytes.subarray(i, end)
+            binary += String.fromCharCode.apply(null, chunk)
+          }
+          const base64 = btoa(binary)
+          const ct = image.contentType || 'image/png'
+          return { src: `data:${ct};base64,${base64}` }
+        })
           const ct = image.contentType || 'image/png'
           return { src: `data:${ct};base64,${base64}` }
         })
