@@ -10,32 +10,33 @@ function generateSlug() {
 export { parseDocument }
 
 // 上传单张图片到 Supabase Storage，返回公开 URL
-export async function uploadTempImage(base64DataUri) {
-  const matches = base64DataUri.match(/^data:(.+);base64,(.+)$/)
-  if (!matches) return null
-  const mimeType = matches[1]
-  const base64 = matches[2]
-  const ext = mimeType.split('/')[1] || 'png'
-  const fileName = `temp/${uuidv4()}.${ext}`
+export async function uploadTempImage(dataUri) {
+  if (!dataUri || !dataUri.startsWith('data:')) return null
 
-  // base64 → bytes
-  const binaryStr = atob(base64.replace(/\s/g, ''))
-  const bytes = new Uint8Array(binaryStr.length)
-  for (let i = 0; i < binaryStr.length; i++) {
-    bytes[i] = binaryStr.charCodeAt(i)
-  }
+  try {
+    // 用浏览器原生 fetch 解码 data URI → Blob
+    const res = await fetch(dataUri)
+    if (!res.ok) { console.error('fetch data URI 失败:', res.status); return null }
+    const blob = await res.blob()
 
-  const { error } = await supabase.storage
-    .from('project-images')
-    .upload(fileName, bytes, { contentType: mimeType, upsert: true })
+    const ext = (blob.type || 'image/png').split('/')[1] || 'png'
+    const fileName = `temp/${uuidv4()}.${ext}`
 
-  if (error) {
-    console.error('图片上传失败:', error.message)
+    const { error } = await supabase.storage
+      .from('project-images')
+      .upload(fileName, blob, { contentType: blob.type, upsert: true })
+
+    if (error) {
+      console.error('图片上传失败:', error.message)
+      return null
+    }
+
+    const { data } = supabase.storage.from('project-images').getPublicUrl(fileName)
+    return data.publicUrl
+  } catch (e) {
+    console.error('图片上传异常:', e)
     return null
   }
-
-  const { data } = supabase.storage.from('project-images').getPublicUrl(fileName)
-  return data.publicUrl
 }
 
 export async function createProject(data) {
