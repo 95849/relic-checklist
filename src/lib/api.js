@@ -9,6 +9,35 @@ function generateSlug() {
 
 export { parseDocument }
 
+// 上传单张图片到 Supabase Storage，返回公开 URL
+export async function uploadTempImage(base64DataUri) {
+  const matches = base64DataUri.match(/^data:(.+);base64,(.+)$/)
+  if (!matches) return null
+  const mimeType = matches[1]
+  const base64 = matches[2]
+  const ext = mimeType.split('/')[1] || 'png'
+  const fileName = `temp/${uuidv4()}.${ext}`
+
+  // base64 → bytes
+  const binaryStr = atob(base64.replace(/\s/g, ''))
+  const bytes = new Uint8Array(binaryStr.length)
+  for (let i = 0; i < binaryStr.length; i++) {
+    bytes[i] = binaryStr.charCodeAt(i)
+  }
+
+  const { error } = await supabase.storage
+    .from('project-images')
+    .upload(fileName, bytes, { contentType: mimeType, upsert: true })
+
+  if (error) {
+    console.error('图片上传失败:', error.message)
+    return null
+  }
+
+  const { data } = supabase.storage.from('project-images').getPublicUrl(fileName)
+  return data.publicUrl
+}
+
 export async function createProject(data) {
   const p1Slug = generateSlug()
   const p2Slug = generateSlug()
@@ -27,58 +56,20 @@ export async function createProject(data) {
 
   if (projErr) throw new Error(projErr.message)
 
-  // 2. 上传图片 + 创建条目
-  const itemRecords = []
-  for (let i = 0; i < data.items.length; i++) {
-    const item = data.items[i]
-    const imageUrls = []
-
-    if (item.image_data && item.image_data.startsWith('data:')) {
-      try {
-        const matches = item.image_data.match(/^data:(.+);base64,(.+)$/)
-        if (matches) {
-          const mimeType = matches[1]
-          const base64Data = matches[2]
-          const ext = mimeType.split('/')[1] || 'png'
-          const fileName = `${project.id}/${i}_0.${ext}`
-
-          // base64 → Uint8Array
-          const binaryStr = atob(base64Data)
-          const bytes = new Uint8Array(binaryStr.length)
-          for (let j = 0; j < binaryStr.length; j++) {
-            bytes[j] = binaryStr.charCodeAt(j)
-          }
-
-          const { error: uploadErr } = await supabase.storage
-            .from('project-images')
-            .upload(fileName, bytes, { contentType: mimeType, upsert: false })
-
-          if (!uploadErr) {
-            const { data: urlData } = supabase.storage
-              .from('project-images')
-              .getPublicUrl(fileName)
-            imageUrls.push(urlData.publicUrl)
-          }
-        }
-      } catch (e) {
-        console.error('图片上传失败:', e)
-      }
-    }
-
-    itemRecords.push({
-      project_id: project.id,
-      seq: item.seq || '',
-      name: item.name || '',
-      era: item.era || '',
-      ref_no: item.ref_no || '',
-      quantity: item.quantity || '',
-      dimensions: item.dimensions || '',
-      excavation_site: item.excavation_site || '',
-      images: imageUrls,
-      image_source: item.image_source || '',
-      sort_order: i,
-    })
-  }
+  // 2. 创建条目（图片 URL 已预先上传）
+  const itemRecords = data.items.map((item, i) => ({
+    project_id: project.id,
+    seq: item.seq || '',
+    name: item.name || '',
+    era: item.era || '',
+    ref_no: item.ref_no || '',
+    quantity: item.quantity || '',
+    dimensions: item.dimensions || '',
+    excavation_site: item.excavation_site || '',
+    images: item.image_urls || [],
+    image_source: item.image_source || '',
+    sort_order: i,
+  }))
 
   const { error: itemsErr } = await supabase.from('items').insert(itemRecords)
   if (itemsErr) throw new Error(itemsErr.message)
@@ -250,5 +241,14 @@ export async function addItems(projectId, newItems) {
     sort_order: i,
   }))
   const { error } = await supabase.from('items').insert(records)
+  if (error) throw new Error(error.message)
+}
+
+export async function deleteProject(projectId) {
+  // 级联删除：items 和 submissions 设置了 ON DELETE CASCADE
+  const { error } = await supabase
+    .from('projects')
+    .delete()
+    .eq('id', projectId)
   if (error) throw new Error(error.message)
 }

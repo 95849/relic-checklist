@@ -16,4 +16,5 @@ CREATE POLICY "public_read_storage" ON storage.objects
 
 -- 项目管理：更新和删除
 CREATE POLICY "public_update_projects" ON projects FOR UPDATE USING (true);
+CREATE POLICY "public_delete_projects" ON projects FOR DELETE USING (true);
 CREATE POLICY "public_delete_items" ON items FOR DELETE USING (true);

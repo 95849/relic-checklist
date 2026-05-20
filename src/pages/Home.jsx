@@ -2,8 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import { TEXT } from '../config/text'
 import { PROJECT_STATUS } from '../config/constants'
-import { parseDocument, createProject, listProjects } from '../lib/api'
-import BlobImg from '../components/BlobImg'
+import { parseDocument, createProject, listProjects, uploadTempImage, deleteProject } from '../lib/api'
 
 function buildLinks(project) {
   const base = window.location.href.split('#')[0]
@@ -50,12 +49,23 @@ export default function Home() {
       const result = await parseDocument(file)
       if (!result.items || result.items.length === 0) {
         setError('未解析到任何条目，请检查文档格式')
-      } else {
-        setParsedData(result)
+        setUploading(false)
+        return
       }
+
+      // 上传图片到 Supabase Storage，拿到 HTTPS URL
+      for (const item of result.items) {
+        const urls = []
+        if (item.image_data && item.image_data.startsWith('data:')) {
+          const url = await uploadTempImage(item.image_data)
+          if (url) urls.push(url)
+        }
+        item.image_urls = urls
+      }
+      setUploading(false)
+      setParsedData(result)
     } catch (err) {
       setError(err.message)
-    } finally {
       setUploading(false)
     }
   }
@@ -92,6 +102,16 @@ export default function Home() {
       setCopied(key)
       setTimeout(() => setCopied(''), 2000)
     })
+  }
+
+  async function handleDeleteProject(id) {
+    if (!confirm('确定删除此项目？所有关联的条目和提交数据将被永久删除。')) return
+    try {
+      await deleteProject(id)
+      loadProjects()
+    } catch (err) {
+      setError(err.message)
+    }
   }
 
   function isDataUri(s) {
@@ -190,9 +210,9 @@ export default function Home() {
                     <td className="px-2 py-1 whitespace-nowrap">{item.dimensions}</td>
                     <td className="px-2 py-1 whitespace-nowrap">{item.excavation_site}</td>
                     <td className="px-2 py-1">
-                      {(item.image_data && item.image_data.length > 10) ? (
-                        <BlobImg dataUri={item.image_data}
-                          style={{ width: 40, height: 40, objectFit: 'cover', borderRadius: 4 }} />
+                      {(item.image_urls && item.image_urls.length > 0) ? (
+                        <img src={item.image_urls[0]} alt=""
+                          style={{ width: 40, height: 40, objectFit: 'cover', borderRadius: 4, display: 'block' }} />
                       ) : <span className="text-gray-400 text-xs">{TEXT.noImage}</span>}
                     </td>
                     <td className="px-2 py-1 whitespace-nowrap">{item.image_source}</td>
@@ -241,6 +261,10 @@ export default function Home() {
                         className="px-4 py-1.5 bg-blue-500 text-white text-sm rounded hover:bg-blue-600">
                         {TEXT.viewResult}
                       </Link>
+                      <button onClick={() => handleDeleteProject(p.id)}
+                        className="px-3 py-1.5 bg-red-100 text-red-600 text-sm rounded hover:bg-red-200">
+                        删除
+                      </button>
                     </div>
                   </div>
                   {expanded && (
