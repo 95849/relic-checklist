@@ -40,11 +40,15 @@ async function parseDocx(file) {
     const tdContent = []
     const tdMatches = tr[1].matchAll(/<t[dh][^>]*>([\s\S]*?)<\/t[hd]>/gi)
     for (const td of tdMatches) {
-      let content = td[1].replace(/<[^>]+>/g, '').trim()
-      // 检查图片 data URI（mammoth 替换后的）
-      const imgMatch = td[1].match(/<img[^>]*src="(data:[^"]*)"[^>]*>/i)
-      if (imgMatch) content = imgMatch[1]
-      tdContent.push(content)
+      // 先检查是否有图片（img 标签）
+      const imgMatch = td[1].match(/<img[^>]*src\s*=\s*["']?([^"'\s>]+)["']?[^>]*>/i)
+      if (imgMatch) {
+        tdContent.push(imgMatch[1]) // 图片 src（data URI 或路径）
+      } else {
+        // 纯文本
+        const text = td[1].replace(/<[^>]+>/g, '').trim()
+        tdContent.push(text)
+      }
     }
     if (tdContent.length >= 9) rows.push(tdContent)
   }

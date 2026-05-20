@@ -4,6 +4,14 @@ import { TEXT } from '../config/text'
 import { PROJECT_STATUS } from '../config/constants'
 import { parseDocument, createProject, listProjects } from '../lib/api'
 
+function buildLinks(project) {
+  const base = window.location.href.split('#')[0]
+  return {
+    person1: `${base}#/form/p1/${project.person1_slug}`,
+    person2: `${base}#/form/p2/${project.person2_slug}`,
+  }
+}
+
 export default function Home() {
   const [projects, setProjects] = useState([])
   const [uploading, setUploading] = useState(false)
@@ -12,17 +20,23 @@ export default function Home() {
   const [creating, setCreating] = useState(false)
   const [createdLinks, setCreatedLinks] = useState(null)
   const [copied, setCopied] = useState('')
+  const [expandedProject, setExpandedProject] = useState(null)
 
   const loadProjects = useCallback(async () => {
     try {
       const data = await listProjects()
       setProjects(data)
-    } catch (e) {
-      // 项目列表加载失败不阻塞
-    }
+    } catch (e) { /* ignore */ }
   }, [])
 
-  useEffect(() => { loadProjects() }, [loadProjects])
+  useEffect(() => {
+    loadProjects()
+    // 恢复 localStorage 中的链接
+    const saved = localStorage.getItem('last_created_links')
+    if (saved) {
+      try { setCreatedLinks(JSON.parse(saved)) } catch (e) {}
+    }
+  }, [loadProjects])
 
   async function handleFile(e) {
     const file = e.target.files[0]
@@ -30,7 +44,6 @@ export default function Home() {
     setError('')
     setUploading(true)
     setParsedData(null)
-    setCreatedLinks(null)
 
     try {
       const result = await parseDocument(file)
@@ -56,11 +69,14 @@ export default function Home() {
         title: parsedData.title,
         items: parsedData.items,
       })
-      setCreatedLinks({
-        person1: window.location.origin + result.links.person1,
-        person2: window.location.origin + result.links.person2,
+      const base = window.location.href.split('#')[0]
+      const links = {
+        person1: `${base}#${result.links.person1}`,
+        person2: `${base}#${result.links.person2}`,
         projectId: result.project.id,
-      })
+      }
+      setCreatedLinks(links)
+      localStorage.setItem('last_created_links', JSON.stringify(links))
       setParsedData(null)
       loadProjects()
     } catch (err) {
@@ -75,6 +91,10 @@ export default function Home() {
       setCopied(key)
       setTimeout(() => setCopied(''), 2000)
     })
+  }
+
+  function isDataUri(s) {
+    return s && s.startsWith('data:image/')
   }
 
   function statusLabel(s) {
@@ -110,21 +130,17 @@ export default function Home() {
               </button>
             </div>
           </div>
-          <button onClick={() => setCreatedLinks(null)}
-            className="mt-3 text-sm text-gray-500 underline">{TEXT.cancelBtn}</button>
+          <button onClick={() => {
+            setCreatedLinks(null)
+            localStorage.removeItem('last_created_links')
+          }} className="mt-3 text-sm text-gray-500 underline">{TEXT.cancelBtn}</button>
         </div>
       )}
 
       {/* 上传区域 */}
       {!parsedData && (
         <div className="mb-6 p-6 border-2 border-dashed border-gray-300 rounded-lg text-center">
-          <input
-            type="file"
-            accept=".docx,.pdf"
-            onChange={handleFile}
-            className="hidden"
-            id="file-upload"
-          />
+          <input type="file" accept=".docx,.pdf" onChange={handleFile} className="hidden" id="file-upload" />
           <label htmlFor="file-upload"
             className="cursor-pointer inline-block px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 text-lg">
             {uploading ? TEXT.parsing : TEXT.newProject}
@@ -173,9 +189,13 @@ export default function Home() {
                     <td className="px-2 py-1 whitespace-nowrap">{item.dimensions}</td>
                     <td className="px-2 py-1 whitespace-nowrap">{item.excavation_site}</td>
                     <td className="px-2 py-1">
-                      {item.image_data?.startsWith('data:') ? (
+                      {isDataUri(item.image_data) ? (
                         <img src={item.image_data} alt="" className="w-10 h-10 object-cover rounded" />
+                      ) : item.image_data?.length > 10 ? (
+                        <img src={item.image_data} alt="" className="w-10 h-10 object-cover rounded"
+                          onError={e => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'inline' }} />
                       ) : TEXT.noImage}
+                      <span className="hidden">{TEXT.noImage}</span>
                     </td>
                     <td className="px-2 py-1 whitespace-nowrap">{item.image_source}</td>
                   </tr>
@@ -201,23 +221,53 @@ export default function Home() {
         <div>
           <h2 className="font-semibold mb-3">{TEXT.projectList}</h2>
           <div className="space-y-2">
-            {projects.map(p => (
-              <div key={p.id} className="flex items-center justify-between p-3 bg-white border rounded-lg flex-wrap gap-2">
-                <div>
-                  <div className="font-medium">{p.title}</div>
-                  <div className="text-xs text-gray-500">
-                    {statusLabel(p.status)}
-                    {p.items && ` · ${p.items[0]?.count || 0} 条`}
+            {projects.map(p => {
+              const links = buildLinks(p)
+              const expanded = expandedProject === p.id
+              return (
+                <div key={p.id} className="p-3 bg-white border rounded-lg">
+                  <div className="flex items-center justify-between flex-wrap gap-2">
+                    <div>
+                      <div className="font-medium">{p.title}</div>
+                      <div className="text-xs text-gray-500">
+                        {statusLabel(p.status)}
+                        {p.items && ` · ${p.items[0]?.count || 0} 条`}
+                      </div>
+                    </div>
+                    <div className="flex gap-2 items-center">
+                      <button onClick={() => setExpandedProject(expanded ? null : p.id)}
+                        className="px-3 py-1.5 bg-gray-100 text-gray-700 text-sm rounded hover:bg-gray-200">
+                        {expanded ? '收起' : '复制链接'}
+                      </button>
+                      <Link to={`/admin/${p.id}`}
+                        className="px-4 py-1.5 bg-blue-500 text-white text-sm rounded hover:bg-blue-600">
+                        {TEXT.viewResult}
+                      </Link>
+                    </div>
                   </div>
+                  {expanded && (
+                    <div className="mt-3 pt-3 border-t space-y-2">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-xs font-medium min-w-[170px]">{TEXT.person1Title}：</span>
+                        <code className="text-xs bg-gray-100 px-2 py-1 rounded break-all flex-1">{links.person1}</code>
+                        <button onClick={() => copyLink(links.person1, `p1-${p.id}`)}
+                          className="shrink-0 px-3 py-1 bg-blue-500 text-white text-xs rounded hover:bg-blue-600">
+                          {copied === `p1-${p.id}` ? TEXT.copied : '复制'}
+                        </button>
+                      </div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-xs font-medium min-w-[170px]">{TEXT.person2Title}：</span>
+                        <code className="text-xs bg-gray-100 px-2 py-1 rounded break-all flex-1">{links.person2}</code>
+                        <button onClick={() => copyLink(links.person2, `p2-${p.id}`)}
+                          className="shrink-0 px-3 py-1 bg-blue-500 text-white text-xs rounded hover:bg-blue-600">
+                          {copied === `p2-${p.id}` ? TEXT.copied : '复制'}
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
-                <Link
-                  to={`/admin/${p.id}`}
-                  className="px-4 py-1.5 bg-blue-500 text-white text-sm rounded hover:bg-blue-600"
-                >
-                  {TEXT.viewResult}
-                </Link>
-              </div>
-            ))}
+              )
+            })}
           </div>
         </div>
       )}
