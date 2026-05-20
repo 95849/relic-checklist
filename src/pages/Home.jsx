@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import BlobImg from '../components/BlobImg'
 import { Link } from 'react-router-dom'
 import { TEXT } from '../config/text'
 import { PROJECT_STATUS } from '../config/constants'
@@ -189,6 +190,11 @@ export default function Home() {
                     <td className="px-2 py-1 whitespace-nowrap">{item.dimensions}</td>
                     <td className="px-2 py-1 whitespace-nowrap">{item.excavation_site}</td>
                     <td className="px-2 py-1">
+                      {(item.image_data && item.image_data.length > 10) ? (
+                        <BlobImg dataUri={item.image_data}
+                          style={{ width: 40, height: 40, objectFit: 'cover', borderRadius: 4 }} />
+                      ) : <span className="text-gray-400 text-xs">{TEXT.noImage}</span>}
+                    </td>
                       {(() => {
                         const src = (item.image_data || '').trim()
                         if (!src || src.length < 10) return <span className="text-gray-400 text-xs">{TEXT.noImage}</span>
