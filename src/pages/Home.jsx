@@ -58,7 +58,10 @@ export default function Home() {
         const urls = []
         if (item.image_data && item.image_data.startsWith('data:')) {
           const url = await uploadTempImage(item.image_data)
-          if (url) urls.push(url)
+          if (url) { urls.push(url); item._up = 'ok' }
+          else { item._up = 'fail' }
+        } else {
+          item._up = 'none'
         }
         item.image_urls = urls
       }
@@ -210,9 +213,10 @@ export default function Home() {
                     <td className="px-2 py-1 whitespace-nowrap">{item.dimensions}</td>
                     <td className="px-2 py-1 whitespace-nowrap">{item.excavation_site}</td>
                     <td className="px-2 py-1">
-                      {(item.image_urls && item.image_urls.length > 0) ? (
-                        <img src={item.image_urls[0]} alt=""
-                          style={{ width: 40, height: 40, objectFit: 'cover', borderRadius: 4, display: 'block' }} />
+                      {(item.image_urls?.length > 0) ? (
+                        <div><img src={item.image_urls[0]} alt="" className="w-10 h-10 object-cover rounded" /><span className="text-green-500 text-[10px]">✓</span></div>
+                      ) : (item.image_data?.startsWith('data:')) ? (
+                        <div><img src={item.image_data} alt="" className="w-10 h-10 object-cover rounded" /><span className="text-red-400 text-[10px]">{item._up === 'fail' ? '✗上传失败' : ''}</span></div>
                       ) : <span className="text-gray-400 text-xs">{TEXT.noImage}</span>}
                     </td>
                     <td className="px-2 py-1 whitespace-nowrap">{item.image_source}</td>
