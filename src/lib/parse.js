@@ -29,9 +29,6 @@ async function parseDocx(file) {
           const ct = image.contentType || 'image/png'
           return { src: `data:${ct};base64,${base64}` }
         })
-          const ct = image.contentType || 'image/png'
-          return { src: `data:${ct};base64,${base64}` }
-        })
       }),
     }
   )

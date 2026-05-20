@@ -1,9 +1,9 @@
 import { useState, useEffect, useCallback } from 'react'
-import BlobImg from '../components/BlobImg'
 import { Link } from 'react-router-dom'
 import { TEXT } from '../config/text'
 import { PROJECT_STATUS } from '../config/constants'
 import { parseDocument, createProject, listProjects } from '../lib/api'
+import BlobImg from '../components/BlobImg'
 
 function buildLinks(project) {
   const base = window.location.href.split('#')[0]
@@ -194,21 +194,6 @@ export default function Home() {
                         <BlobImg dataUri={item.image_data}
                           style={{ width: 40, height: 40, objectFit: 'cover', borderRadius: 4 }} />
                       ) : <span className="text-gray-400 text-xs">{TEXT.noImage}</span>}
-                    </td>
-                      {(() => {
-                        const src = (item.image_data || '').trim()
-                        if (!src || src.length < 10) return <span className="text-gray-400 text-xs">{TEXT.noImage}</span>
-                        return <img src={src} alt=""
-                          style={{ width: 40, height: 40, objectFit: 'cover', borderRadius: 4, display: 'block' }}
-                          onError={e => {
-                            e.target.style.display = 'none'
-                            const fb = e.target.nextElementSibling
-                            if (fb) fb.style.display = 'block'
-                          }} />
-                      })()}
-                      <span style={{ display: 'none', fontSize: 10, color: '#999', wordBreak: 'break-all' }}>
-                        {(item.image_data || '').substring(0, 60)}...
-                      </span>
                     </td>
                     <td className="px-2 py-1 whitespace-nowrap">{item.image_source}</td>
                   </tr>

@@ -218,3 +218,37 @@ export async function listProjects() {
   if (error) throw new Error(error.message)
   return data || []
 }
+
+export async function updateProject(id, updates) {
+  const { error } = await supabase
+    .from('projects')
+    .update(updates)
+    .eq('id', id)
+  if (error) throw new Error(error.message)
+}
+
+export async function deleteItem(itemId) {
+  const { error } = await supabase
+    .from('items')
+    .delete()
+    .eq('id', itemId)
+  if (error) throw new Error(error.message)
+}
+
+export async function addItems(projectId, newItems) {
+  const records = newItems.map((item, i) => ({
+    project_id: projectId,
+    seq: item.seq || '',
+    name: item.name || '',
+    era: item.era || '',
+    ref_no: item.ref_no || '',
+    quantity: item.quantity || '',
+    dimensions: item.dimensions || '',
+    excavation_site: item.excavation_site || '',
+    images: [],
+    image_source: item.image_source || '',
+    sort_order: i,
+  }))
+  const { error } = await supabase.from('items').insert(records)
+  if (error) throw new Error(error.message)
+}
