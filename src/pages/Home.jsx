@@ -94,7 +94,7 @@ export default function Home() {
   }
 
   function isDataUri(s) {
-    return s && s.startsWith('data:image/')
+    return s && s.trim().startsWith('data:')
   }
 
   function statusLabel(s) {
@@ -189,13 +189,20 @@ export default function Home() {
                     <td className="px-2 py-1 whitespace-nowrap">{item.dimensions}</td>
                     <td className="px-2 py-1 whitespace-nowrap">{item.excavation_site}</td>
                     <td className="px-2 py-1">
-                      {isDataUri(item.image_data) ? (
-                        <img src={item.image_data} alt="" className="w-10 h-10 object-cover rounded" />
-                      ) : item.image_data?.length > 10 ? (
-                        <img src={item.image_data} alt="" className="w-10 h-10 object-cover rounded"
-                          onError={e => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'inline' }} />
-                      ) : TEXT.noImage}
-                      <span className="hidden">{TEXT.noImage}</span>
+                      {(() => {
+                        const src = (item.image_data || '').trim()
+                        if (!src || src.length < 10) return <span className="text-gray-400 text-xs">{TEXT.noImage}</span>
+                        return <img src={src} alt=""
+                          style={{ width: 40, height: 40, objectFit: 'cover', borderRadius: 4, display: 'block' }}
+                          onError={e => {
+                            e.target.style.display = 'none'
+                            const fb = e.target.nextElementSibling
+                            if (fb) fb.style.display = 'block'
+                          }} />
+                      })()}
+                      <span style={{ display: 'none', fontSize: 10, color: '#999', wordBreak: 'break-all' }}>
+                        {(item.image_data || '').substring(0, 60)}...
+                      </span>
                     </td>
                     <td className="px-2 py-1 whitespace-nowrap">{item.image_source}</td>
                   </tr>
