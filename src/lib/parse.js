@@ -11,18 +11,14 @@ export async function parseDocument(file) {
 
 async function parseDocx(file) {
   const arrayBuffer = await file.arrayBuffer()
-  const images = []
 
   const result = await mammoth.convertToHtml(
     { arrayBuffer },
     {
       convertImage: mammoth.images.imgElement(function (image) {
-        return image.read().then(function (imageBuffer) {
-          const base64 = arrayBufferToBase64(imageBuffer)
-          const contentType = image.contentType || 'image/png'
-          const dataUri = `data:${contentType};base64,${base64}`
-          images.push(dataUri)
-          return { src: dataUri }
+        return image.read('base64').then(function (base64) {
+          const ct = image.contentType || 'image/png'
+          return { src: `data:${ct};base64,${base64}` }
         })
       }),
     }
@@ -33,7 +29,7 @@ async function parseDocx(file) {
   // 提取表格
   const tableMatch = html.match(/<table[^>]*>([\s\S]*?)<\/table>/i)
   if (!tableMatch) {
-    throw new Error('未在文档中找到表格，请确认文档包含9列表格')
+    throw new Error('未在文档中找到表格，请确认文档包含 9 列表格')
   }
 
   const tableHtml = tableMatch[0]
@@ -45,7 +41,8 @@ async function parseDocx(file) {
     const tdMatches = tr[1].matchAll(/<t[dh][^>]*>([\s\S]*?)<\/t[hd]>/gi)
     for (const td of tdMatches) {
       let content = td[1].replace(/<[^>]+>/g, '').trim()
-      const imgMatch = td[1].match(/<img[^>]*src="([^"]*)"[^>]*>/i)
+      // 检查图片 data URI（mammoth 替换后的）
+      const imgMatch = td[1].match(/<img[^>]*src="(data:[^"]*)"[^>]*>/i)
       if (imgMatch) content = imgMatch[1]
       tdContent.push(content)
     }
@@ -53,10 +50,14 @@ async function parseDocx(file) {
   }
 
   if (rows.length < 2) {
-    throw new Error('表格数据不足，请确认文档包含表头和数据行')
+    throw new Error('表格至少需要表头 + 一行数据。空模板请先填入文物信息再上传。')
   }
 
   const dataRows = rows.slice(1).filter(r => r.some(c => c.length > 0))
+
+  if (dataRows.length === 0) {
+    throw new Error('表格中未检测到任何数据行。请在表格中填入文物信息后重新上传。')
+  }
 
   // 提取标题
   let title = '借展文物清单'
@@ -83,13 +84,4 @@ async function parseDocx(file) {
       sort_order: i,
     })),
   }
-}
-
-function arrayBufferToBase64(buffer) {
-  const bytes = new Uint8Array(buffer)
-  let binary = ''
-  for (let i = 0; i < bytes.byteLength; i++) {
-    binary += String.fromCharCode(bytes[i])
-  }
-  return btoa(binary)
 }
