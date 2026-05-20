@@ -43,7 +43,7 @@ async function parseDocx(file) {
       // 先检查是否有图片（img 标签）
       const imgMatch = td[1].match(/<img[^>]*src\s*=\s*["']?([^"'\s>]+)["']?[^>]*>/i)
       if (imgMatch) {
-        tdContent.push(imgMatch[1]) // 图片 src（data URI 或路径）
+        tdContent.push(imgMatch[1].trim()) // 图片 src，去首尾空格
       } else {
         // 纯文本
         const text = td[1].replace(/<[^>]+>/g, '').trim()
