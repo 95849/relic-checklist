@@ -2,9 +2,9 @@
 import mammoth from 'mammoth'
 
 import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs'
+import pdfjsWorker from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url'
 
-// 禁用 PDF.js worker（浏览器端直接解析）
-pdfjsLib.GlobalWorkerOptions.workerSrc = ''
+pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker
 
 export async function parseDocument(file) {
   const ext = file.name.split('.').pop().toLowerCase()
