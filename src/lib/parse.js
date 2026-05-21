@@ -111,15 +111,17 @@ async function parseDocx(file) {
       quantity: row[4] || '',
       dimensions: row[5] || '',
       excavation_site: row[6] || '',
-      img_idx: extractImgIdx(row[7]),
+      img_idx: findImgIdx(row),   // 遍历所有列找图片，不硬编码位置
       image_source: row[8] || '',
       sort_order: i,
     })),
   }
 }
 
-function extractImgIdx(val) {
-  if (!val) return -1
-  const match = String(val).match(/^__IMG_(\d+)__$/)
-  return match ? parseInt(match[1]) : -1
+function findImgIdx(row) {
+  for (const cell of row) {
+    const m = String(cell).match(/^__IMG_(\d+)__$/)
+    if (m) return parseInt(m[1])
+  }
+  return -1
 }
