@@ -12,26 +12,34 @@ export async function parseDocument(file) {
 async function parseDocx(file) {
   const arrayBuffer = await file.arrayBuffer()
 
+  // 收集提取到的图片（ArrayBuffer）
+  const imageBuffers = []
+
   const result = await mammoth.convertToHtml(
     { arrayBuffer },
     {
       convertImage: mammoth.images.imgElement(function (image) {
-        return image.read().then(function (buffer) {
-          const bytes = new Uint8Array(buffer)
-          let binary = ''
-          const chunkSize = 8192
-          for (let i = 0; i < bytes.length; i += chunkSize) {
-            const end = Math.min(i + chunkSize, bytes.length)
-            const chunk = bytes.subarray(i, end)
-            binary += String.fromCharCode.apply(null, chunk)
-          }
-          const base64 = btoa(binary)
-          const ct = image.contentType || 'image/png'
-          return { src: `data:${ct};base64,${base64}` }
+        const idx = imageBuffers.length
+        imageBuffers.push({
+          buffer: null,          // 稍后填充
+          blob: null,
+          blobUrl: null,
+          contentType: image.contentType || 'image/png',
+          _promise: image.read().then(buf => {
+            imageBuffers[idx].buffer = buf
+            imageBuffers[idx].blob = new Blob([buf], { type: imageBuffers[idx].contentType })
+            imageBuffers[idx].blobUrl = URL.createObjectURL(imageBuffers[idx].blob)
+          }),
         })
+        return { src: `__IMG_${idx}__` }
       }),
     }
   )
+
+  // 等待所有图片读取完成
+  await Promise.all(imageBuffers.map(img => img._promise))
+  // 清理 Promise 引用
+  imageBuffers.forEach(img => { delete img._promise })
 
   const html = result.value
 
@@ -49,12 +57,17 @@ async function parseDocx(file) {
     const tdContent = []
     const tdMatches = tr[1].matchAll(/<t[dh][^>]*>([\s\S]*?)<\/t[hd]>/gi)
     for (const td of tdMatches) {
-      // 先检查是否有图片（img 标签）
       const imgMatch = td[1].match(/<img[^>]*src\s*=\s*["']?([^"'\s>]+)["']?[^>]*>/i)
       if (imgMatch) {
-        tdContent.push(imgMatch[1].trim()) // 图片 src，去首尾空格
+        const src = imgMatch[1].trim()
+        // 检查是否是 mammoth 占位符 __IMG_N__
+        const placeholderMatch = src.match(/^__IMG_(\d+)__$/)
+        if (placeholderMatch) {
+          tdContent.push(`__IMG_${placeholderMatch[1]}__`)
+        } else {
+          tdContent.push(src)
+        }
       } else {
-        // 纯文本
         const text = td[1].replace(/<[^>]+>/g, '').trim()
         tdContent.push(text)
       }
@@ -83,6 +96,7 @@ async function parseDocx(file) {
 
   return {
     title,
+    imageBuffers,  // 所有提取到的图片的 Blob 信息
     columns: ['序号', '名称', '时代', '编号', '数量', '尺寸', '出土地点', '图片', '图片来源'],
     items: dataRows.map((row, i) => ({
       seq: row[0] || '',
@@ -92,9 +106,15 @@ async function parseDocx(file) {
       quantity: row[4] || '',
       dimensions: row[5] || '',
       excavation_site: row[6] || '',
-      image_data: row[7] || '',
+      img_idx: extractImgIdx(row[7]),   // 图片索引（数字）
       image_source: row[8] || '',
       sort_order: i,
     })),
   }
+}
+
+function extractImgIdx(val) {
+  if (!val) return -1
+  const match = String(val).match(/^__IMG_(\d+)__$/)
+  return match ? parseInt(match[1]) : -1
 }

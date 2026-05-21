@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import { TEXT } from '../config/text'
 import { PROJECT_STATUS } from '../config/constants'
-import { parseDocument, createProject, listProjects, uploadTempImage, deleteProject } from '../lib/api'
+import { parseDocument, createProject, listProjects, deleteProject } from '../lib/api'
 
 function buildLinks(project) {
   const base = window.location.href.split('#')[0]
@@ -52,19 +52,6 @@ export default function Home() {
         setUploading(false)
         return
       }
-
-      // 上传图片到 Supabase Storage，拿到 HTTPS URL
-      for (const item of result.items) {
-        const urls = []
-        if (item.image_data && item.image_data.startsWith('data:')) {
-          const url = await uploadTempImage(item.image_data)
-          if (url) { urls.push(url); item._up = 'ok' }
-          else { item._up = 'fail' }
-        } else {
-          item._up = 'none'
-        }
-        item.image_urls = urls
-      }
       setUploading(false)
       setParsedData(result)
     } catch (err) {
@@ -82,6 +69,7 @@ export default function Home() {
       const result = await createProject({
         title: parsedData.title,
         items: parsedData.items,
+        imageBuffers: parsedData.imageBuffers,
       })
       const base = window.location.href.split('#')[0]
       const links = {
@@ -115,10 +103,6 @@ export default function Home() {
     } catch (err) {
       setError(err.message)
     }
-  }
-
-  function isDataUri(s) {
-    return s && s.trim().startsWith('data:')
   }
 
   function statusLabel(s) {
@@ -213,11 +197,11 @@ export default function Home() {
                     <td className="px-2 py-1 whitespace-nowrap">{item.dimensions}</td>
                     <td className="px-2 py-1 whitespace-nowrap">{item.excavation_site}</td>
                     <td className="px-2 py-1">
-                      {(item.image_urls?.length > 0) ? (
-                        <div><img src={item.image_urls[0]} alt="" className="w-10 h-10 object-cover rounded" /><span className="text-green-500 text-[10px]">✓</span></div>
-                      ) : (item.image_data?.startsWith('data:')) ? (
-                        <div><img src={item.image_data} alt="" className="w-10 h-10 object-cover rounded" /><span className="text-red-400 text-[10px]">{item._up === 'fail' ? '✗上传失败' : ''}</span></div>
-                      ) : <span className="text-gray-400 text-xs">{TEXT.noImage}</span>}
+                      {(() => {
+                        const buf = parsedData.imageBuffers?.[item.img_idx]
+                        if (buf?.blobUrl) return <img src={buf.blobUrl} alt="" className="w-10 h-10 object-cover rounded" />
+                        return <span className="text-gray-400 text-xs">{TEXT.noImage}</span>
+                      })()}
                     </td>
                     <td className="px-2 py-1 whitespace-nowrap">{item.image_source}</td>
                   </tr>
