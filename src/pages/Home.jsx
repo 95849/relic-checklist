@@ -197,21 +197,17 @@ export default function Home() {
               <tbody>
                 {parsedData.items.map((item, i) => (
                   <tr key={i} className="border-t hover:bg-gray-50">
-                    <td className="px-2 py-1 whitespace-nowrap">{item.seq}</td>
-                    <td className="px-2 py-1 whitespace-nowrap">{item.name}</td>
-                    <td className="px-2 py-1 whitespace-nowrap">{item.era}</td>
-                    <td className="px-2 py-1 whitespace-nowrap">{item.ref_no}</td>
-                    <td className="px-2 py-1 whitespace-nowrap">{item.quantity}</td>
-                    <td className="px-2 py-1 whitespace-nowrap">{item.dimensions}</td>
-                    <td className="px-2 py-1 whitespace-nowrap">{item.excavation_site}</td>
-                    <td className="px-2 py-1">
-                      {(() => {
+                    {parsedData.columns.map((col, ci) => {
+                      const isImgCol = ci === parsedData.imgCol
+                      if (isImgCol) {
                         const buf = parsedData.imageBuffers?.[item.img_idx]
-                        if (buf?.blobUrl) return <img src={buf.blobUrl} alt="" className="w-10 h-10 object-cover rounded" />
-                        return <span className="text-gray-400 text-xs">{TEXT.noImage}</span>
-                      })()}
-                    </td>
-                    <td className="px-2 py-1 whitespace-nowrap">{item.image_source}</td>
+                        return <td key={ci} className="px-2 py-1">
+                          {buf?.blobUrl ? <img src={buf.blobUrl} alt="" className="w-10 h-10 object-cover rounded" />
+                            : <span className="text-gray-400 text-xs">{TEXT.noImage}</span>}
+                        </td>
+                      }
+                      return <td key={ci} className="px-2 py-1 whitespace-nowrap text-xs">{item.fields[col] || ''}</td>
+                    })}
                   </tr>
                 ))}
               </tbody>

@@ -7,6 +7,16 @@ function generateSlug() {
   return uuidv4().replace(/-/g, '').substring(0, 12)
 }
 
+// 根据关键词从 fields 中查找值
+function findField(fields, keywords) {
+  for (const [key, val] of Object.entries(fields)) {
+    if (keywords.some(kw => key.includes(kw)) && val) {
+      return val
+    }
+  }
+  return ''
+}
+
 export { parseDocument }
 
 // 上传单张图片到 Supabase Storage，返回公开 URL
@@ -87,21 +97,28 @@ export async function createProject(data) {
   // 2. 准备图片 base64（直接存数据库）
   const imageBuffers = data.imageBuffers || []
 
-  // 3. 创建条目
-  const itemRecords = data.items.map((item, i) => ({
-    project_id: project.id,
-    seq: item.seq || '',
-    name: item.name || '',
-    era: item.era || '',
-    ref_no: item.ref_no || '',
-    quantity: item.quantity || '',
-    dimensions: item.dimensions || '',
-    excavation_site: item.excavation_site || '',
-    image_data: (item.img_idx >= 0 && imageBuffers[item.img_idx]?.base64) ? imageBuffers[item.img_idx].base64 : null,
-    images: [],
-    image_source: item.image_source || '',
-    sort_order: i,
-  }))
+  // 3. 创建条目（从 fields 中提取已知列 + 存完整 raw_data）
+  const itemRecords = data.items.map((item, i) => {
+    const f = item.fields || {}
+    const imgBase64 = (item.img_idx >= 0 && imageBuffers[item.img_idx]?.base64)
+      ? imageBuffers[item.img_idx].base64 : null
+
+    return {
+      project_id: project.id,
+      seq: findField(f, ['序号']) || '',
+      name: findField(f, ['名称']) || '',
+      era: findField(f, ['时代', '年代']) || '',
+      ref_no: findField(f, ['编号', '总号']) || '',
+      quantity: findField(f, ['数量']) || '',
+      dimensions: findField(f, ['尺寸', '大小']) || '',
+      excavation_site: findField(f, ['出土地点', '出土地', '来源', '藏地', '收藏地']) || '',
+      image_data: imgBase64,
+      images: [],
+      image_source: findField(f, ['图片来源', '图片出处']) || '',
+      raw_data: f,
+      sort_order: i,
+    }
+  })
 
   const { error: itemsErr } = await supabase.from('items').insert(itemRecords)
   if (itemsErr) throw new Error(itemsErr.message)

@@ -1,19 +1,6 @@
 // 浏览器端文档解析（docx）
 import mammoth from 'mammoth'
 
-// 列名模糊匹配表：中文关键词 → 英文字段名
-const COLUMN_KEYWORDS = [
-  { keys: ['序号'], field: 'seq' },
-  { keys: ['名称'], field: 'name' },
-  { keys: ['时代', '年代'], field: 'era' },
-  { keys: ['编号'], field: 'ref_no' },
-  { keys: ['数量'], field: 'quantity' },
-  { keys: ['尺寸', '大小'], field: 'dimensions' },
-  { keys: ['出土', '来源'], field: 'excavation_site' },
-  { keys: ['藏地', '收藏', '存放'], field: 'storage_place' },
-  { keys: ['图片来源', '图片出处'], field: 'image_source' },
-]
-
 export async function parseDocument(file) {
   const ext = file.name.split('.').pop().toLowerCase()
   if (ext !== 'docx') {
@@ -58,7 +45,7 @@ async function parseDocx(file) {
   // 提取表格
   const tableMatch = html.match(/<table[^>]*>([\s\S]*?)<\/table>/i)
   if (!tableMatch) {
-    throw new Error('未在文档中找到表格，请确认文档包含列表格')
+    throw new Error('未在文档中找到表格')
   }
 
   const tableHtml = tableMatch[0]
@@ -72,44 +59,37 @@ async function parseDocx(file) {
       const imgMatch = td[1].match(/<img[^>]*src\s*=\s*["']?([^"'\s>]+)["']?[^>]*>/i)
       if (imgMatch) {
         const src = imgMatch[1].trim()
-        const placeholderMatch = src.match(/^__IMG_(\d+)__$/)
-        if (placeholderMatch) {
-          tdContent.push(`__IMG_${placeholderMatch[1]}__`)
-        } else {
-          tdContent.push(src)
-        }
+        const pm = src.match(/^__IMG_(\d+)__$/)
+        if (pm) tdContent.push(`__IMG_${pm[1]}__`)
+        else tdContent.push(src)
       } else {
-        const text = td[1].replace(/<[^>]+>/g, '').trim()
-        tdContent.push(text)
+        tdContent.push(td[1].replace(/<[^>]+>/g, '').trim())
       }
     }
     rows.push(tdContent)
   }
 
   if (rows.length < 2) {
-    throw new Error('表格至少需要表头 + 一行数据。空模板请先填入文物信息再上传。')
+    throw new Error('表格至少需要表头 + 一行数据')
   }
 
-  // 解析表头，建立列名 → 列索引映射
-  const headerRow = rows[0]
-  const colMap = {} // fieldName → columnIndex
-  const headerTexts = headerRow.map(c => c.replace(/<[^>]+>/g, '').trim())
+  // 表头
+  const headers = rows[0].map(c => c.replace(/<[^>]+>/g, '').trim())
 
-  for (let ci = 0; ci < headerTexts.length; ci++) {
-    const headerText = headerTexts[ci]
-    for (const kw of COLUMN_KEYWORDS) {
-      if (kw.keys.some(k => headerText.includes(k))) {
-        colMap[kw.field] = ci
-        break
-      }
+  // 找到图片列（含「图片」但不含「来源」「出处」）
+  let imgCol = -1
+  for (let i = 0; i < headers.length; i++) {
+    const h = headers[i]
+    if (h.includes('图片') && !h.includes('来源') && !h.includes('出处')) {
+      imgCol = i
+      break
     }
   }
 
   // 数据行
   const dataRows = rows.slice(1).filter(r => r.some(c => c.length > 0))
-
   if (dataRows.length === 0) {
-    throw new Error('表格中未检测到任何数据行。请在表格中填入文物信息后重新上传。')
+    throw new Error('未检测到数据行。请在表格中填入文物信息后重新上传。')
   }
 
   // 提取标题
@@ -121,33 +101,24 @@ async function parseDocx(file) {
     if (pMatch && pMatch[1].trim()) title = pMatch[1].trim()
   }
 
-  function cell(row, field) {
-    return colMap[field] != null ? (row[colMap[field]] || '') : ''
-  }
-
   return {
     title,
     imageBuffers,
-    columns: headerTexts,
+    columns: headers,  // 原始表头
+    imgCol,           // 图片列索引
     items: dataRows.map((row, i) => ({
-      seq: cell(row, 'seq'),
-      name: cell(row, 'name'),
-      era: cell(row, 'era'),
-      ref_no: cell(row, 'ref_no'),
-      quantity: cell(row, 'quantity'),
-      dimensions: cell(row, 'dimensions'),
-      excavation_site: cell(row, 'excavation_site'),
-      img_idx: findImgIdx(row),
-      image_source: cell(row, 'image_source'),
+      fields: headers.reduce((obj, hdr, ci) => {
+        obj[hdr] = row[ci] || ''
+        return obj
+      }, {}),
+      img_idx: imgCol >= 0 ? parseImgIdx(row[imgCol]) : -1,
       sort_order: i,
     })),
   }
 }
 
-function findImgIdx(row) {
-  for (const cell of row) {
-    const m = String(cell).match(/^__IMG_(\d+)__$/)
-    if (m) return parseInt(m[1])
-  }
-  return -1
+function parseImgIdx(val) {
+  if (!val) return -1
+  const m = String(val).match(/^__IMG_(\d+)__$/)
+  return m ? parseInt(m[1]) : -1
 }

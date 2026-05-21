@@ -303,18 +303,25 @@ function ItemCard({ item, index, isP1, answer, onChange, onImageClick }) {
         </div>
       )}
 
-      {/* 文物基础信息 */}
+      {/* 文物基础信息（显示所有列） */}
       <div className="text-sm text-gray-600 mb-3 space-y-0.5">
         <span className="font-medium text-gray-800">#{index + 1}</span>
         {item.seq && <span className="ml-2">序号：{item.seq}</span>}
         <div className="font-medium text-base text-gray-900">{item.name || '(未命名)'}</div>
         <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs">
-          {item.era && <span>时代：{item.era}</span>}
-          {item.ref_no && <span>编号：{item.ref_no}</span>}
-          {item.quantity && <span>数量：{item.quantity}</span>}
-          {item.dimensions && <span>尺寸：{item.dimensions}</span>}
-          {item.excavation_site && <span>出土地点：{item.excavation_site}</span>}
-          {item.image_source && <span>图片来源：{item.image_source}</span>}
+          {(item.raw_data ? Object.entries(item.raw_data) : [
+            ['时代', item.era], ['编号', item.ref_no], ['数量', item.quantity],
+            ['尺寸', item.dimensions], ['出土地点', item.excavation_site], ['图片来源', item.image_source],
+          ]).filter(([k, v]) => {
+            // 过滤：不显示空值、不显示图片列、不显示名称（已在上方显示）
+            if (!v) return false
+            const label = String(k)
+            if (label.includes('图片') && !label.includes('来源') && !label.includes('出处')) return false
+            if (label === '名称') return false
+            return true
+          }).map(([k, v]) => (
+            <span key={k}>{String(k)}：{String(v)}</span>
+          ))}
         </div>
       </div>
 
