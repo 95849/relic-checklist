@@ -176,6 +176,8 @@ export default function Home() {
           <h2 className="font-semibold mb-2">{TEXT.previewTitle}</h2>
           <p className="text-sm text-gray-500 mb-2">
             标题：{parsedData.title} &nbsp;|&nbsp; 共 {parsedData.items.length} 条记录
+            &nbsp;|&nbsp; 图片：{(parsedData.imageBuffers || []).length} 张
+            &nbsp;|&nbsp; img_idx: [{parsedData.items.map(i => i.img_idx).join(',')}]
           </p>
           <div className="overflow-x-auto border rounded-lg max-h-96">
             <table className="min-w-full text-sm">
