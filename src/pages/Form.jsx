@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { TEXT } from '../config/text'
 import { getProject, submitForm } from '../lib/api'
+import { base64ToBlobUrl } from '../lib/image'
 
 export default function Form() {
   const { role, slug } = useParams()
@@ -281,21 +282,19 @@ function BatchRow({ label, options, onSelect }) {
 
 function ItemCard({ item, index, isP1, answer, onChange, onImageClick }) {
   const images = item.images || []
+  const imgSrc = images[0] || base64ToBlobUrl(item.image_data)
 
   return (
     <div className="bg-white border rounded-lg p-3 shadow-sm">
       {/* 图片区 */}
-      {images.length > 0 && (
+      {imgSrc && (
         <div className="flex gap-2 mb-2 overflow-x-auto">
-          {images.map((url, i) => (
-            <img
-              key={i}
-              src={url}
-              alt=""
-              className="w-20 h-20 object-cover rounded border cursor-pointer shrink-0"
-              onClick={() => onImageClick(url)}
-            />
-          ))}
+          <img
+            src={imgSrc}
+            alt=""
+            className="w-20 h-20 object-cover rounded border cursor-pointer shrink-0"
+            onClick={() => onImageClick(imgSrc)}
+          />
         </div>
       )}
 

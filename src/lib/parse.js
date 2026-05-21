@@ -21,14 +21,15 @@ async function parseDocx(file) {
       convertImage: mammoth.images.imgElement(function (image) {
         const idx = imageBuffers.length
         imageBuffers.push({
-          buffer: null,          // 稍后填充
-          blob: null,
-          blobUrl: null,
+          base64: null,            // 存数据库用
+          blobUrl: null,           // 预览用
           contentType: image.contentType || 'image/png',
           _promise: image.read().then(buf => {
-            imageBuffers[idx].buffer = buf
-            imageBuffers[idx].blob = new Blob([buf], { type: imageBuffers[idx].contentType })
-            imageBuffers[idx].blobUrl = URL.createObjectURL(imageBuffers[idx].blob)
+            const bytes = new Uint8Array(buf)
+            let binary = ''
+            for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i])
+            imageBuffers[idx].base64 = btoa(binary)
+            imageBuffers[idx].blobUrl = URL.createObjectURL(new Blob([buf], { type: imageBuffers[idx].contentType }))
           }),
         })
         return { src: `__IMG_${idx}__` }

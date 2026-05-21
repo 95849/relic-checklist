@@ -84,30 +84,8 @@ export async function createProject(data) {
 
   if (projErr) throw new Error(projErr.message)
 
-  // 2. 上传图片到 Supabase Storage
+  // 2. 准备图片 base64（直接存数据库）
   const imageBuffers = data.imageBuffers || []
-  const finalUrls = []  // 按索引存储最终 URL
-
-  for (let idx = 0; idx < imageBuffers.length; idx++) {
-    const img = imageBuffers[idx]
-    if (img.blob) {
-      try {
-        const ext = (img.contentType || 'image/png').split('/')[1] || 'png'
-        const fileName = `${project.id}/${idx}_0.${ext}`
-        const { error } = await supabase.storage
-          .from('project-images')
-          .upload(fileName, img.blob, { contentType: img.contentType, upsert: true })
-        if (!error) {
-          const { data } = supabase.storage.from('project-images').getPublicUrl(fileName)
-          finalUrls[idx] = data.publicUrl
-        } else {
-          console.error('Storage 上传失败:', error.message)
-        }
-      } catch (e) {
-        console.error('上传异常:', e)
-      }
-    }
-  }
 
   // 3. 创建条目
   const itemRecords = data.items.map((item, i) => ({
@@ -119,7 +97,8 @@ export async function createProject(data) {
     quantity: item.quantity || '',
     dimensions: item.dimensions || '',
     excavation_site: item.excavation_site || '',
-    images: (item.img_idx >= 0 && finalUrls[item.img_idx]) ? [finalUrls[item.img_idx]] : [],
+    image_data: (item.img_idx >= 0 && imageBuffers[item.img_idx]?.base64) ? imageBuffers[item.img_idx].base64 : null,
+    images: [],
     image_source: item.image_source || '',
     sort_order: i,
   }))

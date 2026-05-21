@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { TEXT } from '../config/text'
 import { getResults, updateProject, deleteItem, addItems } from '../lib/api'
+import { base64ToBlobUrl } from '../lib/image'
 import * as XLSX from 'xlsx'
 
 export default function AdminResult() {
@@ -194,7 +195,7 @@ export default function AdminResult() {
           <tbody>
             {data.rows.map((row, i) => {
               const item = row.item; const p1 = row.person1 || {}; const p2 = row.person2 || {}
-              const imgs = item.images || []
+              const imgSrc = (item.images || [])[0] || base64ToBlobUrl(item.image_data)
               return (
                 <tr key={item.id} className="border-t hover:bg-gray-50">
                   <td className="px-2 py-1 whitespace-nowrap">{item.seq || i + 1}</td>
@@ -202,8 +203,8 @@ export default function AdminResult() {
                   <td className="px-2 py-1 whitespace-nowrap">{item.era}</td>
                   <td className="px-2 py-1 whitespace-nowrap">{item.ref_no}</td>
                   <td className="px-2 py-1">
-                    {imgs.length > 0
-                      ? <img src={imgs[0]} alt="" className="w-10 h-10 object-cover rounded cursor-pointer" onClick={() => setLightboxImg(imgs[0])} />
+                    {imgSrc
+                      ? <img src={imgSrc} alt="" className="w-10 h-10 object-cover rounded cursor-pointer" onClick={() => setLightboxImg(imgSrc)} />
                       : <span className="text-gray-400 text-xs">{TEXT.noImage}</span>}
                   </td>
                   <td className="px-2 py-1 whitespace-nowrap text-xs">{renderP1(p1, 'published')}</td>
@@ -226,12 +227,12 @@ export default function AdminResult() {
       <div className="md:hidden space-y-3">
         {data.rows.map((row, i) => {
           const item = row.item; const p1 = row.person1 || {}; const p2 = row.person2 || {}
-          const imgs = item.images || []
+          const imgSrc = (item.images || [])[0] || base64ToBlobUrl(item.image_data)
           return (
             <div key={item.id} className="bg-white border rounded-lg p-3 shadow-sm relative">
               <button onClick={() => handleDelete(item.id)}
                 className="absolute top-2 right-2 text-red-500 text-xs">删除</button>
-              {imgs.length > 0 && <img src={imgs[0]} alt="" className="w-full h-40 object-cover rounded mb-2 cursor-pointer" onClick={() => setLightboxImg(imgs[0])} />}
+              {imgSrc && <img src={imgSrc} alt="" className="w-full h-40 object-cover rounded mb-2 cursor-pointer" onClick={() => setLightboxImg(imgSrc)} />}
               <div className="font-medium">{item.seq || `#${i + 1}`}. {item.name || '(未命名)'}</div>
               <div className="text-xs text-gray-500 mt-1">
                 {item.era && <span>时代：{item.era} &nbsp;</span>}
