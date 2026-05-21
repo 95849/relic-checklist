@@ -48,12 +48,14 @@ export const TEXT = {
   published_notes: '备注',
   publishedNotesHint: '请说明备注内容',
   storage_station: '站队',
+  storage_unknown: '不明',
   storage_other: '其他',
   storageDetailHint: '请填写具体地点',
-  status_suitable: '适合外借',
-  status_not_suitable: '不适合外借',
+  status_stable: '稳定',
+  status_unstable: '不稳定',
   agree_yes: '同意',
   agree_no: '不同意',
+  agreeNoHint: '请填写不同意原因',
 
   // 审批人
   approveAgree: '是否同意出借',

@@ -200,8 +200,9 @@ export async function submitForm(slug, role, payload) {
       published_notes: a.published_notes || null,
       storage_location: a.storage_location || '站队',
       storage_detail: a.storage_detail || null,
-      relic_status: a.relic_status || '适合外借',
+      relic_status: a.relic_status || '稳定',
       agreed: a.agreed || 'yes',
+      agreed_notes: a.agreed_notes || null,
     }))
     const { error } = await supabase.from('person1').insert(records)
     if (error) throw new Error(error.message)

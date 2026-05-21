@@ -41,6 +41,7 @@ export default function Form() {
               storage_detail: sub.storage_detail || '',
               relic_status: sub.relic_status,
               agreed: sub.agreed,
+              agreed_notes: sub.agreed_notes || '',
             } : {
               agreed: sub.agreed,
             }
@@ -80,7 +81,7 @@ export default function Form() {
   function setAnswer(itemId, field, value) {
     setAnswers(prev => {
       const item = prev[itemId] || (isP1
-        ? { published: '', storage_location: '', relic_status: '', agreed: '' }
+        ? { published: '', storage_location: '', relic_status: '', agreed: '', agreed_notes: '' }
         : { agreed: '' })
       return { ...prev, [itemId]: { ...item, [field]: value } }
     })
@@ -91,7 +92,7 @@ export default function Form() {
     const upd = {}
     for (const item of items) {
       const current = answers[item.id] || (isP1
-        ? { published: '', storage_location: '', relic_status: '', agreed: '' }
+        ? { published: '', storage_location: '', relic_status: '', agreed: '', agreed_notes: '' }
         : { agreed: '' })
       upd[item.id] = { ...current, [field]: value }
     }
@@ -115,6 +116,7 @@ export default function Form() {
         if (a.storage_location === '其他' && !a.storage_detail?.trim()) errors.push(`${label}：「${TEXT.qStorage}」选了其他但未填写具体地点`)
         if (!a.relic_status) errors.push(`${label}：缺少「${TEXT.qStatus}」`)
         if (!a.agreed) errors.push(`${label}：缺少「${TEXT.qAgree}」`)
+        if (a.agreed === 'no' && !a.agreed_notes?.trim()) errors.push(`${label}：「${TEXT.qAgree}」选了不同意但未填写原因`)
       } else {
         if (!a.agreed) errors.push(`${label}：缺少「${TEXT.approveAgree}」`)
       }
@@ -204,14 +206,12 @@ export default function Form() {
                   { v: 'yes', t: TEXT.published_yes }, { v: 'no', t: TEXT.published_no }, { v: 'notes', t: TEXT.published_notes }
                 ]} onSelect={v => batchSet('published', v)} />
                 <BatchRow label={TEXT.qStorage} options={[
-                  { v: '站队', t: TEXT.storage_station }, { v: '其他', t: TEXT.storage_other }
+                  { v: '站队', t: TEXT.storage_station }, { v: '不明', t: TEXT.storage_unknown }, { v: '其他', t: TEXT.storage_other }
                 ]} onSelect={v => batchSet('storage_location', v)} />
                 <BatchRow label={TEXT.qStatus} options={[
-                  { v: '适合外借', t: TEXT.status_suitable }, { v: '不适合外借', t: TEXT.status_not_suitable }
+                  { v: '稳定', t: TEXT.status_stable }, { v: '不稳定', t: TEXT.status_unstable }
                 ]} onSelect={v => batchSet('relic_status', v)} />
-                <BatchRow label={TEXT.qAgree} options={[
-                  { v: 'yes', t: TEXT.agree_yes }, { v: 'no', t: TEXT.agree_no }
-                ]} onSelect={v => batchSet('agreed', v)} />
+                <p className="text-xs text-gray-400 italic">「是否同意」需逐条单独选择</p>
               </>
             ) : (
               <BatchRow label={TEXT.approveAgree} options={[
@@ -232,7 +232,7 @@ export default function Form() {
             isP1={isP1}
             person1Answer={person1Data ? person1Data[item.id] : null}
             answer={answers[item.id] || (isP1
-              ? { published: '', storage_location: '', relic_status: '', agreed: '' }
+              ? { published: '', storage_location: '', relic_status: '', agreed: '', agreed_notes: '' }
               : { agreed: '' })}
             onChange={(field, value) => setAnswer(item.id, field, value)}
             onImageClick={img => setLightboxImg(img)}
@@ -356,6 +356,7 @@ function ItemCard({ item, index, isP1, answer, person1Answer, onChange, onImageC
             label={TEXT.qStorage}
             options={[
               { v: '站队', t: TEXT.storage_station },
+              { v: '不明', t: TEXT.storage_unknown },
               { v: '其他', t: TEXT.storage_other },
             ]}
             value={answer.storage_location}
@@ -375,14 +376,14 @@ function ItemCard({ item, index, isP1, answer, person1Answer, onChange, onImageC
           <ChoiceGroup
             label={TEXT.qStatus}
             options={[
-              { v: '适合外借', t: TEXT.status_suitable },
-              { v: '不适合外借', t: TEXT.status_not_suitable },
+              { v: '稳定', t: TEXT.status_stable },
+              { v: '不稳定', t: TEXT.status_unstable },
             ]}
             value={answer.relic_status}
             onChange={v => onChange('relic_status', v)}
           />
 
-          {/* 是否同意 */}
+          {/* 是否同意（逐条单独选择） */}
           <ChoiceGroup
             label={TEXT.qAgree}
             options={[
@@ -392,6 +393,15 @@ function ItemCard({ item, index, isP1, answer, person1Answer, onChange, onImageC
             value={answer.agreed}
             onChange={v => onChange('agreed', v)}
           />
+          {answer.agreed === 'no' && (
+            <input
+              type="text"
+              value={answer.agreed_notes || ''}
+              onChange={e => onChange('agreed_notes', e.target.value)}
+              placeholder={TEXT.agreeNoHint}
+              className="w-full px-3 py-2 border rounded text-sm focus:outline-none focus:ring-1 focus:ring-red-400"
+            />
+          )}
         </div>
       ) : (
         <div className="space-y-2.5">
