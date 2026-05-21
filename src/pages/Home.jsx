@@ -179,6 +179,12 @@ export default function Home() {
             &nbsp;|&nbsp; 图片：{(parsedData.imageBuffers || []).length} 张
             &nbsp;|&nbsp; img_idx: [{parsedData.items.map(i => i.img_idx).join(',')}]
           </p>
+          {parsedData.debugRowHtml && (
+            <details className="mb-2">
+              <summary className="text-xs text-gray-400 cursor-pointer">查看第一行原始列内容（调试）</summary>
+              <pre className="text-[10px] text-gray-500 bg-gray-100 p-2 rounded mt-1 overflow-x-auto max-h-32 whitespace-pre-wrap">{parsedData.debugRowHtml}</pre>
+            </details>
+          )}
           <div className="overflow-x-auto border rounded-lg max-h-96">
             <table className="min-w-full text-sm">
               <thead className="bg-gray-100 sticky top-0">

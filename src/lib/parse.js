@@ -95,9 +95,13 @@ async function parseDocx(file) {
     if (pMatch && pMatch[1].trim()) title = pMatch[1].trim()
   }
 
+  // 调试：表格 HTML 片段（前 3000 字符）
+  const debugRowHtml = tableHtml.substring(0, 3000)
+
   return {
     title,
-    imageBuffers,  // 所有提取到的图片的 Blob 信息
+    imageBuffers,
+    debugRowHtml,  // 调试用，看表格列的原始内容
     columns: ['序号', '名称', '时代', '编号', '数量', '尺寸', '出土地点', '图片', '图片来源'],
     items: dataRows.map((row, i) => ({
       seq: row[0] || '',
@@ -107,7 +111,7 @@ async function parseDocx(file) {
       quantity: row[4] || '',
       dimensions: row[5] || '',
       excavation_site: row[6] || '',
-      img_idx: extractImgIdx(row[7]),   // 图片索引（数字）
+      img_idx: extractImgIdx(row[7]),
       image_source: row[8] || '',
       sort_order: i,
     })),
