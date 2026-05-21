@@ -156,11 +156,26 @@ export async function getProject(slug) {
     .select('*')
     .eq('project_id', project.id)
 
+  // 室主任需看到队长的回答
+  let person1Data = null
+  if (role === 'p2') {
+    const { data: p1 } = await supabase
+      .from('person1')
+      .select('*')
+      .eq('project_id', project.id)
+    if (p1?.length > 0) {
+      const map = {}
+      p1.forEach(s => { map[s.item_id] = s })
+      person1Data = map
+    }
+  }
+
   return {
     project: { id: project.id, title: project.title, status: project.status },
     role,
     items,
     existing: existing?.length > 0 ? existing : null,
+    person1Data,
   }
 }
 

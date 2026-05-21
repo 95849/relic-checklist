@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { TEXT } from '../config/text'
-import { getResults, updateProject, deleteItem, addItems } from '../lib/api'
+import { getResults, updateProject, deleteItem, addItems, parseDocument } from '../lib/api'
+import { supabase } from '../lib/supabase'
 import { base64ToBlobUrl } from '../lib/image'
 import * as XLSX from 'xlsx'
 
@@ -18,6 +19,8 @@ export default function AdminResult() {
     seq: '', name: '', era: '', ref_no: '', quantity: '',
     dimensions: '', excavation_site: '', image_source: '',
   })
+  const [addingFile, setAddingFile] = useState(false)
+  const [parsedItems, setParsedItems] = useState(null)
 
   const loadData = useCallback(async () => {
     try {
@@ -57,7 +60,6 @@ export default function AdminResult() {
   }
 
   async function handleAdd() {
-    const fields = ['name', 'seq', 'era', 'ref_no', 'quantity', 'dimensions', 'excavation_site']
     if (!newItem.name.trim()) { setError('名称不能为空'); return }
     try {
       await addItems(projectId, [newItem])
@@ -67,6 +69,54 @@ export default function AdminResult() {
     } catch (err) {
       setError(err.message)
     }
+  }
+
+  async function handleAddFile(e) {
+    const file = e.target.files[0]
+    if (!file) return
+    setAddingFile(true)
+    setError('')
+    try {
+      const result = await parseDocument(file)
+      if (!result.items?.length) { setError('未解析到条目'); setAddingFile(false); return }
+      setParsedItems(result)
+    } catch (err) { setError(err.message) }
+    setAddingFile(false)
+  }
+
+  async function handleAddParsedItems() {
+    if (!parsedItems?.items?.length) return
+    setError('')
+    try {
+      // 复用 createProject 的图片上传逻辑
+      const { imageBuffers } = parsedItems
+      const newRecords = parsedItems.items.map((item, i) => {
+        const f = item.fields || {}
+        const imgBase64 = (item.img_idx >= 0 && imageBuffers[item.img_idx]?.base64)
+          ? imageBuffers[item.img_idx].base64 : null
+        return {
+          seq: f['序号'] || '', name: f['名称'] || '', era: f['时代'] || '', ref_no: f['编号'] || '',
+          quantity: f['数量'] || '', dimensions: f['尺寸'] || '', excavation_site: f['出土地点'] || f['来源'] || '',
+          image_data: imgBase64, images: [],
+          image_source: f['图片来源'] || '',
+          raw_data: f,
+        }
+      })
+      const { error } = await supabase.from('items').insert(
+        newRecords.map(r => ({ ...r, project_id: projectId, sort_order: 0 }))
+      )
+      if (error) throw new Error(error.message)
+      setParsedItems(null)
+      loadData()
+    } catch (err) { setError(err.message) }
+  }
+
+  // 从 fields 中找值
+  function ff(fields, keys) {
+    for (const [k, v] of Object.entries(fields || {})) {
+      if (keys.some(kw => k.includes(kw)) && v) return v
+    }
+    return ''
   }
 
   function exportExcel() {
@@ -156,7 +206,9 @@ export default function AdminResult() {
       {showAddForm && (
         <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
           <h3 className="font-semibold mb-3">添加新条目</h3>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+
+          {/* 方式A：手动输入 */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-3">
             {[
               { key: 'seq', label: '序号' }, { key: 'name', label: '名称' },
               { key: 'era', label: '时代' }, { key: 'ref_no', label: '编号' },
@@ -165,20 +217,59 @@ export default function AdminResult() {
             ].map(f => (
               <div key={f.key} className="flex flex-col">
                 <label className="text-xs text-gray-500 mb-0.5">{f.label}</label>
-                <input
-                  type="text" value={newItem[f.key]}
+                <input type="text" value={newItem[f.key]}
                   onChange={e => setNewItem(prev => ({ ...prev, [f.key]: e.target.value }))}
                   className="px-2 py-1 border rounded text-sm"
-                  placeholder={f.key === 'name' ? '必填' : '选填'}
-                />
+                  placeholder={f.key === 'name' ? '必填' : '选填'} />
               </div>
             ))}
           </div>
-          <div className="mt-3 flex gap-2">
-            <button onClick={handleAdd}
-              className="px-4 py-1.5 bg-green-500 text-white text-sm rounded hover:bg-green-600">确认添加</button>
-            <button onClick={() => setShowAddForm(false)}
-              className="px-4 py-1.5 bg-gray-300 text-gray-700 text-sm rounded hover:bg-gray-400">取消</button>
+          <div className="flex gap-2 mb-4">
+            <button onClick={handleAdd} className="px-4 py-1.5 bg-green-500 text-white text-sm rounded hover:bg-green-600">确认添加</button>
+          </div>
+
+          {/* 方式B：上传文件批量导入 */}
+          <div className="border-t pt-3">
+            <p className="text-sm font-medium mb-2">从文件批量导入</p>
+            <input type="file" accept=".docx,.pdf" onChange={handleAddFile}
+              className="text-sm" />
+            {addingFile && <p className="text-sm text-gray-500 mt-1">解析中...</p>}
+          </div>
+
+          {/* 解析结果预览 */}
+          {parsedItems && (
+            <div className="mt-3 border-t pt-3">
+              <p className="text-sm font-medium mb-2">解析到 {parsedItems.items.length} 条记录</p>
+              <div className="overflow-x-auto max-h-48 border rounded">
+                <table className="min-w-full text-xs">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      {parsedItems.columns.map((c, i) => <th key={i} className="px-1 py-0.5 text-left border-b">{c}</th>)}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {parsedItems.items.slice(0, 20).map((item, i) => (
+                      <tr key={i} className="border-t">
+                        {parsedItems.columns.map((col, ci) => (
+                          <td key={ci} className="px-1 py-0.5 whitespace-nowrap">{item.fields[col] || ''}</td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="mt-2 flex gap-2">
+                <button onClick={handleAddParsedItems}
+                  className="px-4 py-1.5 bg-green-500 text-white text-sm rounded hover:bg-green-600">导入全部</button>
+                <button onClick={() => setParsedItems(null)}
+                  className="px-4 py-1.5 bg-gray-300 text-gray-700 text-sm rounded hover:bg-gray-400">取消</button>
+              </div>
+            </div>
+          )}
+
+          <div className="mt-3">
+            <button onClick={() => { setShowAddForm(false); setParsedItems(null) }}
+              className="px-4 py-1.5 bg-gray-300 text-gray-700 text-sm rounded hover:bg-gray-400">关闭</button>
           </div>
         </div>
       )}

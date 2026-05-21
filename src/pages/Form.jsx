@@ -18,6 +18,7 @@ export default function Form() {
   const [error, setError] = useState('')
   const [batchOpen, setBatchOpen] = useState(false)
   const [lightboxImg, setLightboxImg] = useState(null)
+  const [person1Data, setPerson1Data] = useState(null)
   const nameRef = useRef(null)
 
   // 加载项目数据
@@ -27,6 +28,7 @@ export default function Form() {
         const data = await getProject(slug)
         setProject(data.project)
         setItems(data.items)
+        if (data.person1Data) setPerson1Data(data.person1Data)
 
         // 恢复已有答案
         if (data.existing) {
@@ -229,6 +231,7 @@ export default function Form() {
             item={item}
             index={idx}
             isP1={isP1}
+            person1Answer={person1Data ? person1Data[item.id] : null}
             answer={answers[item.id] || (isP1
               ? { published: '', storage_location: '', relic_status: '', agreed: '' }
               : { agreed: '' })}
@@ -285,7 +288,7 @@ function BatchRow({ label, options, onSelect }) {
   )
 }
 
-function ItemCard({ item, index, isP1, answer, onChange, onImageClick }) {
+function ItemCard({ item, index, isP1, answer, person1Answer, onChange, onImageClick }) {
   const images = item.images || []
   const imgSrc = images[0] || base64ToBlobUrl(item.image_data)
 
@@ -392,7 +395,17 @@ function ItemCard({ item, index, isP1, answer, onChange, onImageClick }) {
           />
         </div>
       ) : (
-        <div>
+        <div className="space-y-2.5">
+          {/* 显示队长的决定 */}
+          {person1Answer && (
+            <div className="text-xs bg-gray-50 rounded p-2">
+              <span className="text-gray-500">{TEXT.person1Title}：</span>
+              <span className="font-medium">{TEXT.qAgree}：{person1Answer.agreed === 'yes' ? TEXT.agree_yes : person1Answer.agreed === 'no' ? TEXT.agree_no : '未填写'}</span>
+              {person1Answer.relic_status && <span className="ml-2">{TEXT.qStatus}：{person1Answer.relic_status}</span>}
+              {person1Answer.storage_location && <span className="ml-2">{TEXT.qStorage}：{person1Answer.storage_location}</span>}
+              {person1Answer.published && <span className="ml-2">{TEXT.qPublished}：{person1Answer.published === 'yes' ? TEXT.published_yes : person1Answer.published === 'no' ? TEXT.published_no : TEXT.published_notes}</span>}
+            </div>
+          )}
           <ChoiceGroup
             label={TEXT.approveAgree}
             options={[
