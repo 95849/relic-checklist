@@ -16,7 +16,7 @@ export default function Form() {
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
-  const [batchOpen, setBatchOpen] = useState(false)
+  const [batchOpen, setBatchOpen] = useState(true)
   const [lightboxImg, setLightboxImg] = useState(null)
   const [person1Data, setPerson1Data] = useState(null)
   const nameRef = useRef(null)
@@ -96,7 +96,6 @@ export default function Form() {
       upd[item.id] = { ...current, [field]: value }
     }
     setAnswers(prev => ({ ...prev, ...upd }))
-    setBatchOpen(false)
   }
 
   // 校验
