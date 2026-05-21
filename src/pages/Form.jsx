@@ -99,22 +99,28 @@ export default function Form() {
 
   // 校验
   function validate() {
+    const errors = []
     if (!personName.trim()) {
-      setError(TEXT.nameRequired)
-      nameRef.current?.scrollIntoView({ behavior: 'smooth' })
-      nameRef.current?.focus()
-      return false
+      errors.push('请填写姓名')
     }
     for (const item of items) {
+      const label = `#${item.seq || items.indexOf(item) + 1} ${item.name || '(未命名)'}`
       const a = answers[item.id]
-      if (!a) return false  // 有未填的条目
+      if (!a) { errors.push(`${label}：未填写任何选项`); continue }
       if (isP1) {
-        if (!a.published || !a.storage_location || !a.relic_status || !a.agreed) return false
-        if (a.published === 'notes' && !a.published_notes?.trim()) return false
-        if (a.storage_location === '其他' && !a.storage_detail?.trim()) return false
+        if (!a.published) errors.push(`${label}：缺少「${TEXT.qPublished}」`)
+        if (a.published === 'notes' && !a.published_notes?.trim()) errors.push(`${label}：「${TEXT.qPublished}」选了备注但未填写备注内容`)
+        if (!a.storage_location) errors.push(`${label}：缺少「${TEXT.qStorage}」`)
+        if (a.storage_location === '其他' && !a.storage_detail?.trim()) errors.push(`${label}：「${TEXT.qStorage}」选了其他但未填写具体地点`)
+        if (!a.relic_status) errors.push(`${label}：缺少「${TEXT.qStatus}」`)
+        if (!a.agreed) errors.push(`${label}：缺少「${TEXT.qAgree}」`)
       } else {
-        if (!a.agreed) return false
+        if (!a.agreed) errors.push(`${label}：缺少「${TEXT.approveAgree}」`)
       }
+    }
+    if (errors.length > 0) {
+      setError(errors.slice(0, 10).join('\n') + (errors.length > 10 ? `\n...还有 ${errors.length - 10} 条未完成` : ''))
+      return false
     }
     return true
   }
@@ -122,7 +128,6 @@ export default function Form() {
   const handleSubmit = useCallback(async () => {
     setError('')
     if (!validate()) {
-      setError(TEXT.incompleteWarning)
       return
     }
 
