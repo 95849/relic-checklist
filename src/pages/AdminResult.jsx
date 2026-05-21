@@ -5,6 +5,9 @@ import { getResults, updateProject, deleteItem, addItems, parseDocument } from '
 import { supabase } from '../lib/supabase'
 import { base64ToBlobUrl } from '../lib/image'
 import * as XLSX from 'xlsx'
+import { Document, Packer, Paragraph, Table, TableRow, TableCell, TextRun, WidthType } from 'docx'
+import { jsPDF } from 'jspdf'
+import 'jspdf-autotable'
 
 export default function AdminResult() {
   const { projectId } = useParams()
@@ -111,37 +114,68 @@ export default function AdminResult() {
     } catch (err) { setError(err.message) }
   }
 
-  // 从 fields 中找值
-  function ff(fields, keys) {
-    for (const [k, v] of Object.entries(fields || {})) {
-      if (keys.some(kw => k.includes(kw)) && v) return v
+  // 从 raw_data 提取动态列（过滤掉图片列、空列）
+  function getDataColumns() {
+    if (!data?.rows?.length) return []
+    const keys = new Set()
+    for (const row of data.rows) {
+      const rd = row.item?.raw_data
+      if (rd) Object.keys(rd).forEach(k => {
+        if (!k.includes('图片') || k.includes('来源') || k.includes('出处')) keys.add(k)
+      })
     }
+    return [...keys].filter(k => k !== '图片')
+  }
+
+  function fieldVal(item, col) {
+    const rd = item?.raw_data
+    if (rd && rd[col] !== undefined) return rd[col]
     return ''
   }
 
+  function p1Text(p1, field) {
+    if (!p1) return ''
+    if (field === 'published') {
+      return p1.published === 'yes' ? TEXT.published_yes : p1.published === 'no' ? TEXT.published_no : p1.published === 'notes' ? `${TEXT.published_notes}${p1.published_notes ? ':' + p1.published_notes : ''}` : ''
+    }
+    return p1[field] || ''
+  }
+
+  function agreeText(v) {
+    if (v === 'yes') return TEXT.agree_yes
+    if (v === 'no') return TEXT.agree_no
+    return ''
+  }
+
+  function buildRows() {
+    const rows = []
+    for (const row of (data?.rows || [])) {
+      const item = row.item; const p1 = row.person1 || {}; const p2 = row.person2 || {}
+      rows.push({
+        item, p1, p2,
+        imgSrc: (item.images || [])[0] || base64ToBlobUrl(item.image_data),
+        cells: [
+          p1Text(p1, 'published'), p1.published_notes || '', p1.storage_location || '', p1.storage_detail || '',
+          p1.relic_status || '', agreeText(p1.agreed), p1.agreed_notes || '',
+          agreeText(p2.agreed),
+        ],
+      })
+    }
+    return rows
+  }
+
+  const dataColumns = getDataColumns()
+  const exportRows = buildRows()
+  const p1Fields = [TEXT.qPublished, '发表备注', TEXT.qStorage, '存放详情', TEXT.qStatus, TEXT.qAgree, '不同意原因']
+
   function exportExcel() {
     if (!data) return
-    const headers = [
-      '序号', '名称', '时代', '编号', '数量', '尺寸', '出土地点', '图片来源',
-      `[${TEXT.person1Title}] 是否发表`, `[${TEXT.person1Title}] 发表备注`,
-      `[${TEXT.person1Title}] 存放地点`, `[${TEXT.person1Title}] 存放详情`,
-      `[${TEXT.person1Title}] 文物状态`, `[${TEXT.person1Title}] 是否同意`,
-      `[${TEXT.person2Title}] 是否同意`,
-    ]
+    const headers = [...dataColumns, ...p1Fields, `${TEXT.person2Title}-${TEXT.qAgree}`]
     const sheetRows = [headers]
-    for (const row of data.rows) {
-      const item = row.item
-      const p1 = row.person1 || {}
-      const p2 = row.person2 || {}
+    for (const r of exportRows) {
       sheetRows.push([
-        item.seq || '', item.name || '', item.era || '', item.ref_no || '',
-        item.quantity || '', item.dimensions || '', item.excavation_site || '',
-        item.image_source || '',
-        p1.published === 'yes' ? TEXT.published_yes : p1.published === 'no' ? TEXT.published_no : p1.published === 'notes' ? TEXT.published_notes : '',
-        p1.published_notes || '', p1.storage_location || '', p1.storage_detail || '',
-        p1.relic_status || '',
-        p1.agreed === 'yes' ? TEXT.agree_yes : p1.agreed === 'no' ? TEXT.agree_no : '',
-        p2.agreed === 'yes' ? TEXT.agree_yes : p2.agreed === 'no' ? TEXT.agree_no : '',
+        ...dataColumns.map(c => fieldVal(r.item, c)),
+        ...r.cells,
       ])
     }
     sheetRows.push([])
@@ -152,6 +186,44 @@ export default function AdminResult() {
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb, ws, '填写结果')
     XLSX.writeFile(wb, `${data.project.title || '借展文物清单'}_结果.xlsx`)
+  }
+
+  async function exportDocx() {
+    if (!data) return
+    const headers = [...dataColumns, ...p1Fields, `${TEXT.person2Title}-${TEXT.qAgree}`]
+    const tableRows = [
+      new TableRow({ children: headers.map(h => new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: h, bold: true, size: 18 })] })] })) }),
+      ...exportRows.map(r =>
+        new TableRow({ children: [...dataColumns.map(c => fieldVal(r.item, c)), ...r.cells].map(v =>
+          new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: String(v || ''), size: 18 })] })] })
+        )})
+      ),
+    ]
+    const doc = new Document({
+      sections: [{
+        children: [
+          new Paragraph({ children: [new TextRun({ text: data.project.title || '借展文物清单', bold: true, size: 28 })] }),
+          new Paragraph({ children: [new TextRun({ text: `${TEXT.person1Title}：${data.person1Name || ''}    ${TEXT.person2Title}：${data.person2Name || ''}`, size: 20 })] }),
+          new Table({ rows: tableRows, width: { size: 100, type: WidthType.PERCENTAGE } }),
+        ],
+      }],
+    })
+    const blob = await Packer.toBlob(doc)
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a'); a.href = url; a.download = `${data.project.title || '清单'}_结果.docx`; a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  function exportPdf() {
+    if (!data) return
+    const doc = new jsPDF('l', 'mm', 'a4')
+    const headers = [...dataColumns, ...p1Fields, `${TEXT.person2Title}-${TEXT.qAgree}`]
+    const body = exportRows.map(r => [...dataColumns.map(c => fieldVal(r.item, c)), ...r.cells])
+    doc.setFontSize(14); doc.text(data.project.title || '借展文物清单', 14, 15)
+    doc.setFontSize(10)
+    doc.text(`${TEXT.person1Title}：${data.person1Name || ''}    ${TEXT.person2Title}：${data.person2Name || ''}`, 14, 22)
+    doc.autoTable({ head: [headers], body, startY: 28, styles: { fontSize: 7, cellPadding: 1 }, headStyles: { fillColor: [100, 100, 100] } })
+    doc.save(`${data.project.title || '清单'}_结果.pdf`)
   }
 
   if (loading) return <div className="flex items-center justify-center min-h-screen"><div className="text-gray-500">加载中...</div></div>
@@ -184,9 +256,11 @@ export default function AdminResult() {
         </div>
         <div className="flex gap-2">
           <button onClick={exportExcel}
-            className="px-4 py-2 bg-green-500 text-white text-sm rounded-lg hover:bg-green-600">
-            {TEXT.exportExcel}
-          </button>
+            className="px-3 py-1.5 bg-green-500 text-white text-xs rounded hover:bg-green-600">Excel</button>
+          <button onClick={exportDocx}
+            className="px-3 py-1.5 bg-blue-500 text-white text-xs rounded hover:bg-blue-600">Word</button>
+          <button onClick={exportPdf}
+            className="px-3 py-1.5 bg-red-500 text-white text-xs rounded hover:bg-red-600">PDF</button>
           <button onClick={() => setShowAddForm(!showAddForm)}
             className="px-4 py-2 bg-blue-500 text-white text-sm rounded-lg hover:bg-blue-600">
             + 添加条目
@@ -279,8 +353,14 @@ export default function AdminResult() {
         <table className="min-w-full text-sm">
           <thead className="bg-gray-100">
             <tr>
-              {['序号', '名称', '时代', '编号', '图片', 'P1-发表', 'P1-存放', 'P1-状态', 'P1-同意', 'P2-同意', '操作']
-                .map((h, i) => <th key={i} className="px-2 py-1.5 text-left border-b whitespace-nowrap">{h}</th>)}
+              {dataColumns.map(c => <th key={c} className="px-2 py-1.5 text-left border-b whitespace-nowrap">{c}</th>)}
+              <th className="px-2 py-1.5 text-left border-b whitespace-nowrap">图片</th>
+              <th className="px-2 py-1.5 text-left border-b whitespace-nowrap">{TEXT.qPublished}</th>
+              <th className="px-2 py-1.5 text-left border-b whitespace-nowrap">{TEXT.qStorage}</th>
+              <th className="px-2 py-1.5 text-left border-b whitespace-nowrap">{TEXT.qStatus}</th>
+              <th className="px-2 py-1.5 text-left border-b whitespace-nowrap">{TEXT.qAgree}</th>
+              <th className="px-2 py-1.5 text-left border-b whitespace-nowrap">P2-{TEXT.qAgree}</th>
+              <th className="px-2 py-1.5 text-left border-b whitespace-nowrap">操作</th>
             </tr>
           </thead>
           <tbody>
@@ -289,23 +369,19 @@ export default function AdminResult() {
               const imgSrc = (item.images || [])[0] || base64ToBlobUrl(item.image_data)
               return (
                 <tr key={item.id} className="border-t hover:bg-gray-50">
-                  <td className="px-2 py-1 whitespace-nowrap">{item.seq || i + 1}</td>
-                  <td className="px-2 py-1 whitespace-nowrap font-medium">{item.name}</td>
-                  <td className="px-2 py-1 whitespace-nowrap">{item.era}</td>
-                  <td className="px-2 py-1 whitespace-nowrap">{item.ref_no}</td>
+                  {dataColumns.map(c => <td key={c} className="px-2 py-1 whitespace-nowrap text-xs">{fieldVal(item, c)}</td>)}
                   <td className="px-2 py-1">
                     {imgSrc
                       ? <img src={imgSrc} alt="" className="w-10 h-10 object-cover rounded cursor-pointer" onClick={() => setLightboxImg(imgSrc)} />
                       : <span className="text-gray-400 text-xs">{TEXT.noImage}</span>}
                   </td>
-                  <td className="px-2 py-1 whitespace-nowrap text-xs">{renderP1(p1, 'published')}</td>
+                  <td className="px-2 py-1 whitespace-nowrap text-xs">{p1Text(p1, 'published')}</td>
                   <td className="px-2 py-1 whitespace-nowrap text-xs">{p1.storage_location || '-'}{p1.storage_detail ? ` (${p1.storage_detail})` : ''}</td>
                   <td className="px-2 py-1 whitespace-nowrap text-xs">{p1.relic_status || '-'}</td>
-                  <td className="px-2 py-1 whitespace-nowrap text-xs">{ag(p1.agreed)}</td>
-                  <td className="px-2 py-1 whitespace-nowrap text-xs">{ag(p2.agreed)}</td>
+                  <td className="px-2 py-1 whitespace-nowrap text-xs">{agreeText(p1.agreed)}{p1.agreed_notes ? ` (${p1.agreed_notes})` : ''}</td>
+                  <td className="px-2 py-1 whitespace-nowrap text-xs">{agreeText(p2.agreed)}</td>
                   <td className="px-2 py-1 whitespace-nowrap">
-                    <button onClick={() => handleDelete(item.id)}
-                      className="text-red-500 hover:text-red-700 text-xs">删除</button>
+                    <button onClick={() => handleDelete(item.id)} className="text-red-500 hover:text-red-700 text-xs">删除</button>
                   </td>
                 </tr>
               )
@@ -321,21 +397,20 @@ export default function AdminResult() {
           const imgSrc = (item.images || [])[0] || base64ToBlobUrl(item.image_data)
           return (
             <div key={item.id} className="bg-white border rounded-lg p-3 shadow-sm relative">
-              <button onClick={() => handleDelete(item.id)}
-                className="absolute top-2 right-2 text-red-500 text-xs">删除</button>
+              <button onClick={() => handleDelete(item.id)} className="absolute top-2 right-2 text-red-500 text-xs">删除</button>
               {imgSrc && <img src={imgSrc} alt="" className="w-full h-40 object-cover rounded mb-2 cursor-pointer" onClick={() => setLightboxImg(imgSrc)} />}
-              <div className="font-medium">{item.seq || `#${i + 1}`}. {item.name || '(未命名)'}</div>
               <div className="text-xs text-gray-500 mt-1">
-                {item.era && <span>时代：{item.era} &nbsp;</span>}
-                {item.ref_no && <span>编号：{item.ref_no} &nbsp;</span>}
-                {item.quantity && <span>数量：{item.quantity}</span>}
+                {dataColumns.map(c => {
+                  const v = fieldVal(item, c)
+                  return v ? <span key={c}>{c}：{v} &nbsp;</span> : null
+                })}
               </div>
               <div className="mt-2 grid grid-cols-2 gap-1 text-xs">
-                <div>发表：{renderP1(p1, 'published')}</div>
+                <div>发表：{p1Text(p1, 'published')}</div>
                 <div>存放：{p1.storage_location || '-'}</div>
                 <div>状态：{p1.relic_status || '-'}</div>
-                <div>{TEXT.person1Title}同意：<strong>{ag(p1.agreed)}</strong></div>
-                <div className="col-span-2">{TEXT.person2Title}同意：<strong>{ag(p2.agreed)}</strong></div>
+                <div>{TEXT.person1Title}同意：<strong>{agreeText(p1.agreed)}</strong></div>
+                <div className="col-span-2">{TEXT.person2Title}同意：<strong>{agreeText(p2.agreed)}</strong></div>
               </div>
             </div>
           )
@@ -351,21 +426,4 @@ export default function AdminResult() {
       )}
     </div>
   )
-}
-
-function renderP1(p1, field) {
-  if (field === 'published') {
-    const v = p1.published
-    if (v === 'yes') return TEXT.published_yes
-    if (v === 'no') return TEXT.published_no
-    if (v === 'notes') return `${TEXT.published_notes}${p1.published_notes ? `: ${p1.published_notes}` : ''}`
-    return '-'
-  }
-  return p1[field] || '-'
-}
-
-function ag(v) {
-  if (v === 'yes') return TEXT.agree_yes
-  if (v === 'no') return TEXT.agree_no
-  return TEXT.notSubmitted
 }
