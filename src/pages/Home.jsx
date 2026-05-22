@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { TEXT } from '../config/text'
 import { PROJECT_STATUS } from '../config/constants'
 import { parseDocument, createProject, listProjects, deleteProject } from '../lib/api'
+import { logout } from '../components/AuthGuard'
 
 function buildLinks(project) {
   const base = window.location.href.split('#')[0]
@@ -114,7 +115,10 @@ export default function Home() {
 
   return (
     <div className="max-w-3xl mx-auto px-4 py-6">
-      <h1 className="text-2xl font-bold text-center mb-6">{TEXT.homeTitle}</h1>
+      <div className="flex items-center justify-between mb-6">
+        <h1 className="text-2xl font-bold">{TEXT.homeTitle}</h1>
+        <button onClick={logout} className="text-xs text-gray-400 hover:text-red-500 underline">退出登录</button>
+      </div>
 
       {/* 创建成功 — 分享链接 */}
       {createdLinks && (
@@ -148,7 +152,7 @@ export default function Home() {
       {/* 上传区域 */}
       {!parsedData && (
         <div className="mb-6 p-6 border-2 border-dashed border-gray-300 rounded-lg text-center">
-          <input type="file" accept=".docx,.pdf" onChange={handleFile} className="hidden" id="file-upload" />
+          <input type="file" accept=".docx" onChange={handleFile} className="hidden" id="file-upload" />
           <label htmlFor="file-upload"
             className="cursor-pointer inline-block px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 text-lg">
             {uploading ? TEXT.parsing : TEXT.newProject}
@@ -177,14 +181,7 @@ export default function Home() {
           <p className="text-sm text-gray-500 mb-2">
             标题：{parsedData.title} &nbsp;|&nbsp; 共 {parsedData.items.length} 条记录
             &nbsp;|&nbsp; 图片：{(parsedData.imageBuffers || []).length} 张
-            &nbsp;|&nbsp; img_idx: [{parsedData.items.map(i => i.img_idx).join(',')}]
           </p>
-          {parsedData.debugRowHtml && (
-            <details className="mb-2">
-              <summary className="text-xs text-gray-400 cursor-pointer">查看第一行原始列内容（调试）</summary>
-              <pre className="text-[10px] text-gray-500 bg-gray-100 p-2 rounded mt-1 overflow-x-auto max-h-32 whitespace-pre-wrap">{parsedData.debugRowHtml}</pre>
-            </details>
-          )}
           <div className="overflow-x-auto border rounded-lg max-h-96">
             <table className="min-w-full text-sm">
               <thead className="bg-gray-100 sticky top-0">

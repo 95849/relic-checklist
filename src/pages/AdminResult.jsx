@@ -3,6 +3,7 @@ import { useParams, Link } from 'react-router-dom'
 import { TEXT } from '../config/text'
 import { getResults, updateProject, deleteItem, addItems, parseDocument } from '../lib/api'
 import { supabase } from '../lib/supabase'
+import { logout } from '../components/AuthGuard'
 import { base64ToBlobUrl } from '../lib/image'
 import * as XLSX from 'xlsx'
 import { Document, Packer, Paragraph, Table, TableRow, TableCell, TextRun, WidthType } from 'docx'
@@ -235,7 +236,10 @@ export default function AdminResult() {
       {/* 顶部 */}
       <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
         <div className="flex-1">
-          <Link to="/" className="text-blue-500 text-sm hover:underline">&larr; {TEXT.backHome}</Link>
+          <div className="flex items-center gap-3">
+            <Link to="/" className="text-blue-500 text-sm hover:underline">&larr; {TEXT.backHome}</Link>
+            <button onClick={logout} className="text-xs text-gray-400 hover:text-red-500 underline">退出</button>
+          </div>
           <div className="flex items-center gap-2 mt-1">
             {editingTitle ? (
               <input
@@ -305,7 +309,7 @@ export default function AdminResult() {
           {/* 方式B：上传文件批量导入 */}
           <div className="border-t pt-3">
             <p className="text-sm font-medium mb-2">从文件批量导入</p>
-            <input type="file" accept=".docx,.pdf" onChange={handleAddFile}
+            <input type="file" accept=".docx" onChange={handleAddFile}
               className="text-sm" />
             {addingFile && <p className="text-sm text-gray-500 mt-1">解析中...</p>}
           </div>

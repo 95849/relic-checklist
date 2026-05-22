@@ -13,7 +13,7 @@ export const TEXT = {
 
   // 管理员首页
   newProject: '新建项目',
-  uploadHint: '上传借展文物清单（.docx 或 .pdf）',
+  uploadHint: '上传借展文物清单（.docx）',
   parsing: '正在解析文件...',
   previewTitle: '解析预览 — 请确认数据无误',
   confirmCreate: '确认创建',

@@ -19,63 +19,6 @@ function findField(fields, keywords) {
 
 export { parseDocument }
 
-// 上传单张图片到 Supabase Storage，返回公开 URL
-export async function uploadTempImage(dataUri) {
-  if (!dataUri || !dataUri.startsWith('data:')) return null
-
-  try {
-    // data URI → Blob：多种解码方式依次尝试
-    let blob = null
-
-    // 方式1：fetch（如果 data URI 不太长）
-    if (dataUri.length < 500000) {
-      try {
-        const res = await fetch(dataUri)
-        if (res.ok) blob = await res.blob()
-      } catch (_) { /* fetch 失败，继续尝试 */ }
-    }
-
-    // 方式2：手动 atob 解码
-    if (!blob) {
-      const commaIdx = dataUri.indexOf(',')
-      if (commaIdx === -1) return null
-      const header = dataUri.substring(0, commaIdx)
-      const b64 = dataUri.substring(commaIdx + 1).replace(/\s/g, '')
-      const mimeMatch = header.match(/data:([^;]+)/)
-      const mime = mimeMatch ? mimeMatch[1] : 'image/png'
-
-      // 补全 base64 padding
-      const padded = b64 + '='.repeat((4 - b64.length % 4) % 4)
-      const raw = atob(padded)
-      const bytes = new Uint8Array(raw.length)
-      for (let i = 0; i < raw.length; i++) {
-        bytes[i] = raw.charCodeAt(i)
-      }
-      blob = new Blob([bytes], { type: mime })
-    }
-
-    if (!blob) return null
-
-    const ext = (blob.type || 'image/png').split('/')[1] || 'png'
-    const fileName = `temp/${uuidv4()}.${ext}`
-
-    const { error } = await supabase.storage
-      .from('project-images')
-      .upload(fileName, blob, { contentType: blob.type, upsert: true })
-
-    if (error) {
-      console.error('上传失败:', error.message)
-      return null
-    }
-
-    const { data } = supabase.storage.from('project-images').getPublicUrl(fileName)
-    return data.publicUrl
-  } catch (e) {
-    console.error('上传异常:', e.message || e)
-    return null
-  }
-}
-
 export async function createProject(data) {
   const p1Slug = generateSlug()
   const p2Slug = generateSlug()
@@ -302,7 +245,9 @@ export async function addItems(projectId, newItems) {
     dimensions: item.dimensions || '',
     excavation_site: item.excavation_site || '',
     images: [],
+    image_data: item.image_data || null,
     image_source: item.image_source || '',
+    raw_data: item.raw_data || null,
     sort_order: i,
   }))
   const { error } = await supabase.from('items').insert(records)
