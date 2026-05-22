@@ -8,7 +8,7 @@ import { base64ToBlobUrl } from '../lib/image'
 import * as XLSX from 'xlsx'
 import { Document, Packer, Paragraph, Table, TableRow, TableCell, TextRun, WidthType, ImageRun } from 'docx'
 import { jsPDF } from 'jspdf'
-import autoTable from 'jspdf-autotable'
+import html2canvas from 'html2canvas'
 
 export default function AdminResult() {
   const { projectId } = useParams()
@@ -206,11 +206,9 @@ export default function AdminResult() {
 
     for (const r of exportRows) {
       const cells = []
-      // 数据列
       for (const c of dataColumns) {
         cells.push(textCell(fieldVal(r.item, c)))
       }
-      // 图片列
       const imgBase64 = r.item?.image_data
       if (imgBase64) {
         try {
@@ -220,7 +218,7 @@ export default function AdminResult() {
           for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
           cells.push(new TableCell({
             children: [new Paragraph({
-              children: [new ImageRun({ data: bytes, transformation: { width: 40, height: 40 } })],
+              children: [new ImageRun({ data: bytes, transformation: { width: 100, height: 70 } })],
             })],
           }))
         } catch (e) {
@@ -229,7 +227,6 @@ export default function AdminResult() {
       } else {
         cells.push(textCell(''))
       }
-      // 回答列
       for (const v of r.cells) {
         cells.push(textCell(v))
       }
@@ -238,6 +235,7 @@ export default function AdminResult() {
 
     const doc = new Document({
       sections: [{
+        properties: { pageSize: { width: 16838, height: 11906 } },  // 横版 A4
         children: [
           new Paragraph({ children: [new TextRun({ text: data.project.title || '借展文物清单', bold: true, size: 28 })] }),
           new Paragraph({ children: [new TextRun({ text: `${TEXT.person1Title}：${data.person1Name || ''}    ${TEXT.person2Title}：${data.person2Name || ''}`, size: 20 })] }),
@@ -251,16 +249,43 @@ export default function AdminResult() {
     URL.revokeObjectURL(url)
   }
 
-  function exportPdf() {
+  async function exportPdf() {
     if (!data) return
-    const doc = new jsPDF('l', 'mm', 'a4')
-    const headers = [...dataColumns, ...p1Fields, `${TEXT.person2Title}-${TEXT.qAgree}`]
-    const body = exportRows.map(r => [...dataColumns.map(c => fieldVal(r.item, c)), ...r.cells])
-    doc.setFontSize(14); doc.text(data.project.title || '借展文物清单', 14, 15)
-    doc.setFontSize(10)
-    doc.text(`${TEXT.person1Title}：${data.person1Name || ''}    ${TEXT.person2Title}：${data.person2Name || ''}`, 14, 22)
-    autoTable(doc, { head: [headers], body, startY: 28, styles: { fontSize: 7, cellPadding: 1 }, headStyles: { fillColor: [100, 100, 100] } })
-    doc.save(`${data.project.title || '清单'}_结果.pdf`)
+    // 构建临时表格供 html2canvas 截图（避免字体乱码）
+    const wrapper = document.createElement('div')
+    wrapper.style.cssText = 'position:fixed;left:-9999px;top:0;background:#fff;padding:16px;font-family:sans-serif'
+    wrapper.innerHTML = [
+      `<h2 style="margin:0 0 8px">${data.project.title || '借展文物清单'}</h2>`,
+      `<p style="margin:0 0 12px;font-size:13px">${TEXT.person1Title}：${data.person1Name || ''} &nbsp; ${TEXT.person2Title}：${data.person2Name || ''}</p>`,
+      '<table style="border-collapse:collapse;font-size:11px">',
+      `<thead><tr>${[...dataColumns, ...p1Fields, `${TEXT.person2Title}-${TEXT.qAgree}`].map(h => `<th style="border:1px solid #ccc;padding:3px 6px;background:#eee">${h}</th>`).join('')}</tr></thead>`,
+      '<tbody>',
+      ...exportRows.map(r => `<tr>${[...dataColumns.map(c => fieldVal(r.item, c)), ...r.cells].map(v => `<td style="border:1px solid #ccc;padding:2px 6px">${String(v || '')}</td>`).join('')}</tr>`),
+      '</tbody></table>',
+    ].join('')
+    document.body.appendChild(wrapper)
+    try {
+      const canvas = await html2canvas(wrapper, { scale: 2 })
+      const imgData = canvas.toDataURL('image/png')
+      const doc = new jsPDF('l', 'mm', 'a4')
+      const pageW = doc.internal.pageSize.getWidth()
+      const pageH = doc.internal.pageSize.getHeight()
+      const imgW = pageW - 20
+      const imgH = (canvas.height / canvas.width) * imgW
+      let y = 10
+      // 分页处理
+      while (y < imgH) {
+        doc.addImage(imgData, 'PNG', 10, 10, imgW, imgH, undefined, 'FAST', 0)
+        const remaining = imgH - y
+        if (remaining > pageH - 20) {
+          doc.addPage()
+          y += pageH - 20
+        } else { break }
+      }
+      doc.save(`${data.project.title || '清单'}_结果.pdf`)
+    } finally {
+      document.body.removeChild(wrapper)
+    }
   }
 
   if (loading) return <div className="flex items-center justify-center min-h-screen"><div className="text-gray-500">加载中...</div></div>
