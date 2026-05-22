@@ -148,12 +148,38 @@ export default function AdminResult() {
     return ''
   }
 
+  // 从 base64 获取图片原始尺寸（按最大宽 160px 等比缩放）
+  function getImgDim(base64) {
+    return new Promise(resolve => {
+      if (!base64) return resolve(null)
+      const img = new Image()
+      img.onload = () => {
+        const maxW = 160
+        const ratio = Math.min(maxW / img.naturalWidth, 1)
+        resolve({ w: Math.round(img.naturalWidth * ratio), h: Math.round(img.naturalHeight * ratio) })
+      }
+      img.onerror = () => resolve(null)
+      img.src = base64.startsWith('data:') ? base64 : `data:image/png;base64,${base64}`
+    })
+  }
+
   function buildRows() {
     const rows = []
     for (const row of (data?.rows || [])) {
       const item = row.item; const p1 = row.person1 || {}; const p2 = row.person2 || {}
+      const imgBase64 = item?.image_data
+      let imgBytes = null
+      if (imgBase64) {
+        try {
+          const b64 = imgBase64.indexOf(',') > -1 ? imgBase64.split(',')[1] : imgBase64
+          const binary = atob(b64.replace(/\s/g, ''))
+          imgBytes = new Uint8Array(binary.length)
+          for (let i = 0; i < binary.length; i++) imgBytes[i] = binary.charCodeAt(i)
+        } catch (e) { /* ignore */ }
+      }
       rows.push({
         item, p1, p2,
+        imgBase64, imgBytes,
         imgSrc: (item.images || [])[0] || base64ToBlobUrl(item.image_data),
         cells: [
           p1Text(p1, 'published'), p1.published_notes || '', p1.storage_location || '', p1.storage_detail || '',
@@ -166,8 +192,12 @@ export default function AdminResult() {
   }
 
   const dataColumns = getDataColumns()
-  const exportRows = buildRows()
-  const p1Fields = [TEXT.qPublished, '发表备注', TEXT.qStorage, '存放详情', TEXT.qStatus, TEXT.qAgree, '不同意原因']
+
+  // 预加载所有图片尺寸
+  const [exportRows, p1Fields] = (() => {
+    const rows = buildRows()
+    return [rows, [TEXT.qPublished, '发表备注', TEXT.qStorage, '存放详情', TEXT.qStatus, TEXT.qAgree, '不同意原因']]
+  })()
 
   function exportExcel() {
     if (!data) return
@@ -193,49 +223,26 @@ export default function AdminResult() {
     if (!data) return
     const imgHeader = '图片'
     const headers = [...dataColumns, imgHeader, ...p1Fields, `${TEXT.person2Title}-${TEXT.qAgree}`]
-
-    function textCell(text) {
-      return new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: String(text || ''), size: 18 })] })] })
-    }
-
-    function headerCell(text) {
-      return new TableCell({ children: [new Paragraph({ children: [new TextRun({ text, bold: true, size: 18 })] })] })
-    }
+    function textCell(text) { return new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: String(text || ''), size: 18 })] })] }) }
+    function headerCell(text) { return new TableCell({ children: [new Paragraph({ children: [new TextRun({ text, bold: true, size: 18 })] })] }) }
 
     const tableRows = [new TableRow({ children: headers.map(headerCell) })]
-
     for (const r of exportRows) {
       const cells = []
-      for (const c of dataColumns) {
-        cells.push(textCell(fieldVal(r.item, c)))
-      }
-      const imgBase64 = r.item?.image_data
-      if (imgBase64) {
-        try {
-          const b64 = imgBase64.indexOf(',') > -1 ? imgBase64.split(',')[1] : imgBase64
-          const binary = atob(b64.replace(/\s/g, ''))
-          const bytes = new Uint8Array(binary.length)
-          for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
-          cells.push(new TableCell({
-            children: [new Paragraph({
-              children: [new ImageRun({ data: bytes, transformation: { width: 100, height: 70 } })],
-            })],
-          }))
-        } catch (e) {
-          cells.push(textCell('(图片)'))
-        }
+      for (const c of dataColumns) cells.push(textCell(fieldVal(r.item, c)))
+      const dim = await getImgDim(r.imgBase64)
+      if (dim && r.imgBytes) {
+        cells.push(new TableCell({ children: [new Paragraph({ children: [new ImageRun({ data: r.imgBytes, transformation: { width: dim.w, height: dim.h } })] })] }))
       } else {
         cells.push(textCell(''))
       }
-      for (const v of r.cells) {
-        cells.push(textCell(v))
-      }
+      for (const v of r.cells) cells.push(textCell(v))
       tableRows.push(new TableRow({ children: cells }))
     }
 
     const doc = new Document({
       sections: [{
-        properties: { pageSize: { width: 16838, height: 11906 } },  // 横版 A4
+        properties: { pageSize: { width: 16838, height: 11906 } },
         children: [
           new Paragraph({ children: [new TextRun({ text: data.project.title || '借展文物清单', bold: true, size: 28 })] }),
           new Paragraph({ children: [new TextRun({ text: `${TEXT.person1Title}：${data.person1Name || ''}    ${TEXT.person2Title}：${data.person2Name || ''}`, size: 20 })] }),
@@ -251,36 +258,67 @@ export default function AdminResult() {
 
   async function exportPdf() {
     if (!data) return
-    // 构建临时表格供 html2canvas 截图（避免字体乱码）
+    const imgHeader = '图片'
+    const allHeaders = [...dataColumns, imgHeader, ...p1Fields, `${TEXT.person2Title}-${TEXT.qAgree}`]
+
+    // 先计算所有图片尺寸
+    const imgCells = []
+    for (const r of exportRows) {
+      const dim = await getImgDim(r.imgBase64)
+      if (dim && r.imgSrc) {
+        imgCells.push(`<td style="border:1px solid #ccc;padding:2px;text-align:center"><img src="${r.imgSrc}" style="max-width:${dim.w}px;max-height:${dim.h}px" /></td>`)
+      } else {
+        imgCells.push(`<td style="border:1px solid #ccc;padding:2px 6px"></td>`)
+      }
+    }
+
     const wrapper = document.createElement('div')
     wrapper.style.cssText = 'position:fixed;left:-9999px;top:0;background:#fff;padding:16px;font-family:sans-serif'
     wrapper.innerHTML = [
       `<h2 style="margin:0 0 8px">${data.project.title || '借展文物清单'}</h2>`,
       `<p style="margin:0 0 12px;font-size:13px">${TEXT.person1Title}：${data.person1Name || ''} &nbsp; ${TEXT.person2Title}：${data.person2Name || ''}</p>`,
       '<table style="border-collapse:collapse;font-size:11px">',
-      `<thead><tr>${[...dataColumns, ...p1Fields, `${TEXT.person2Title}-${TEXT.qAgree}`].map(h => `<th style="border:1px solid #ccc;padding:3px 6px;background:#eee">${h}</th>`).join('')}</tr></thead>`,
+      `<thead><tr>${allHeaders.map(h => `<th style="border:1px solid #ccc;padding:3px 6px;background:#eee">${h}</th>`).join('')}</tr></thead>`,
       '<tbody>',
-      ...exportRows.map(r => `<tr>${[...dataColumns.map(c => fieldVal(r.item, c)), ...r.cells].map(v => `<td style="border:1px solid #ccc;padding:2px 6px">${String(v || '')}</td>`).join('')}</tr>`),
+      ...exportRows.map((r, ri) => `<tr>${
+        [...dataColumns.map(c => `<td style="border:1px solid #ccc;padding:2px 6px">${String(fieldVal(r.item, c) || '')}</td>`),
+          imgCells[ri],
+          ...r.cells.map(v => `<td style="border:1px solid #ccc;padding:2px 6px">${String(v || '')}</td>`)
+        ].join('')
+      }</tr>`),
       '</tbody></table>',
     ].join('')
     document.body.appendChild(wrapper)
+
+    // 等图片加载
+    await new Promise(r => setTimeout(r, 500))
+
     try {
-      const canvas = await html2canvas(wrapper, { scale: 2 })
+      const canvas = await html2canvas(wrapper, { scale: 2, useCORS: true })
       const imgData = canvas.toDataURL('image/png')
       const doc = new jsPDF('l', 'mm', 'a4')
       const pageW = doc.internal.pageSize.getWidth()
       const pageH = doc.internal.pageSize.getHeight()
       const imgW = pageW - 20
       const imgH = (canvas.height / canvas.width) * imgW
-      let y = 10
-      // 分页处理
-      while (y < imgH) {
-        doc.addImage(imgData, 'PNG', 10, 10, imgW, imgH, undefined, 'FAST', 0)
-        const remaining = imgH - y
-        if (remaining > pageH - 20) {
-          doc.addPage()
-          y += pageH - 20
-        } else { break }
+
+      if (imgH <= pageH - 20) {
+        doc.addImage(imgData, 'PNG', 10, 10, imgW, imgH)
+      } else {
+        let sy = 0
+        let pageNum = 0
+        while (sy < canvas.height) {
+          if (pageNum > 0) doc.addPage()
+          const sliceH = Math.min(canvas.height - sy, Math.round(canvas.width * (pageH - 20) / imgW))
+          const sliceCanvas = document.createElement('canvas')
+          sliceCanvas.width = canvas.width
+          sliceCanvas.height = sliceH
+          const ctx = sliceCanvas.getContext('2d')
+          ctx.drawImage(canvas, 0, sy, canvas.width, sliceH, 0, 0, canvas.width, sliceH)
+          doc.addImage(sliceCanvas.toDataURL('image/png'), 'PNG', 10, 10, imgW, sliceH / canvas.width * imgW)
+          sy += sliceH
+          pageNum++
+        }
       }
       doc.save(`${data.project.title || '清单'}_结果.pdf`)
     } finally {
