@@ -6,9 +6,9 @@ import { supabase } from '../lib/supabase'
 import { logout } from '../components/AuthGuard'
 import { base64ToBlobUrl } from '../lib/image'
 import * as XLSX from 'xlsx'
-import { Document, Packer, Paragraph, Table, TableRow, TableCell, TextRun, WidthType } from 'docx'
+import { Document, Packer, Paragraph, Table, TableRow, TableCell, TextRun, WidthType, ImageRun } from 'docx'
 import { jsPDF } from 'jspdf'
-import 'jspdf-autotable'
+import autoTable from 'jspdf-autotable'
 
 export default function AdminResult() {
   const { projectId } = useParams()
@@ -191,15 +191,51 @@ export default function AdminResult() {
 
   async function exportDocx() {
     if (!data) return
-    const headers = [...dataColumns, ...p1Fields, `${TEXT.person2Title}-${TEXT.qAgree}`]
-    const tableRows = [
-      new TableRow({ children: headers.map(h => new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: h, bold: true, size: 18 })] })] })) }),
-      ...exportRows.map(r =>
-        new TableRow({ children: [...dataColumns.map(c => fieldVal(r.item, c)), ...r.cells].map(v =>
-          new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: String(v || ''), size: 18 })] })] })
-        )})
-      ),
-    ]
+    const imgHeader = '图片'
+    const headers = [...dataColumns, imgHeader, ...p1Fields, `${TEXT.person2Title}-${TEXT.qAgree}`]
+
+    function textCell(text) {
+      return new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: String(text || ''), size: 18 })] })] })
+    }
+
+    function headerCell(text) {
+      return new TableCell({ children: [new Paragraph({ children: [new TextRun({ text, bold: true, size: 18 })] })] })
+    }
+
+    const tableRows = [new TableRow({ children: headers.map(headerCell) })]
+
+    for (const r of exportRows) {
+      const cells = []
+      // 数据列
+      for (const c of dataColumns) {
+        cells.push(textCell(fieldVal(r.item, c)))
+      }
+      // 图片列
+      const imgBase64 = r.item?.image_data
+      if (imgBase64) {
+        try {
+          const b64 = imgBase64.indexOf(',') > -1 ? imgBase64.split(',')[1] : imgBase64
+          const binary = atob(b64.replace(/\s/g, ''))
+          const bytes = new Uint8Array(binary.length)
+          for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
+          cells.push(new TableCell({
+            children: [new Paragraph({
+              children: [new ImageRun({ data: bytes, transformation: { width: 40, height: 40 } })],
+            })],
+          }))
+        } catch (e) {
+          cells.push(textCell('(图片)'))
+        }
+      } else {
+        cells.push(textCell(''))
+      }
+      // 回答列
+      for (const v of r.cells) {
+        cells.push(textCell(v))
+      }
+      tableRows.push(new TableRow({ children: cells }))
+    }
+
     const doc = new Document({
       sections: [{
         children: [
@@ -223,7 +259,7 @@ export default function AdminResult() {
     doc.setFontSize(14); doc.text(data.project.title || '借展文物清单', 14, 15)
     doc.setFontSize(10)
     doc.text(`${TEXT.person1Title}：${data.person1Name || ''}    ${TEXT.person2Title}：${data.person2Name || ''}`, 14, 22)
-    doc.autoTable({ head: [headers], body, startY: 28, styles: { fontSize: 7, cellPadding: 1 }, headStyles: { fillColor: [100, 100, 100] } })
+    autoTable(doc, { head: [headers], body, startY: 28, styles: { fontSize: 7, cellPadding: 1 }, headStyles: { fillColor: [100, 100, 100] } })
     doc.save(`${data.project.title || '清单'}_结果.pdf`)
   }
 
